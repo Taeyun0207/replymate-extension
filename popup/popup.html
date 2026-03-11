@@ -1,31 +1,180 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ReplyMate</title>
-    <style>
-      body {
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-        margin: 0;
-        padding: 12px;
-        width: 280px;
-      }
-      h1 {
-        font-size: 14px;
-        margin: 0 0 8px;
-      }
-      p {
-        font-size: 12px;
-        margin: 0;
-        opacity: 0.8;
-        line-height: 1.35;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>ReplyMate</h1>
-    <p>Project scaffold is set up. Next: add Gmail UI hooks and settings.</p>
-  </body>
-</html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReplyMate Settings</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --text: #222222;
+      --muted: #5f6368;
+      --border: #d0d7de;
+      --select-bg: #ffffff;
+      --select-text: #222222;
+      --button-bg: #1a73e8;
+      --button-text: #ffffff;
+      --success: #188038;
+    }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #202124;
+        --text: #e8eaed;
+        --muted: #9aa0a6;
+        --border: #5f6368;
+        --select-bg: #303134;
+        --select-text: #e8eaed;
+        --button-bg: #8ab4f8;
+        --button-text: #202124;
+        --success: #81c995;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-width: 260px;
+      padding: 14px;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    h2 {
+      margin: 0 0 14px 0;
+      font-size: 18px;
+      line-height: 1.2;
+      color: var(--text);
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    select {
+      width: 100%;
+      padding: 9px 10px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--select-bg);
+      color: var(--select-text);
+      outline: none;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 9px 10px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--select-bg);
+      color: var(--select-text);
+      outline: none;
+    }
+
+/* FIX: dropdown option text visibility */
+option {
+  color: #000;
+  background: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  option {
+    color: #fff;
+    background: #303134;
+  }
+}
+
+    select:focus {
+      border-color: var(--button-bg);
+    }
+
+    button {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      background: var(--button-bg);
+      color: var(--button-text);
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.7;
+      cursor: default;
+    }
+
+    #statusMessage {
+      margin-top: 10px;
+      min-height: 16px;
+      font-size: 12px;
+      color: var(--success);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    #statusMessage.visible {
+      opacity: 1;
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <h2>ReplyMate Settings</h2>
+
+  <div class="field">
+    <label for="toneSelect">Reply Tone</label>
+    <select id="toneSelect">
+      <option value="professional">Professional</option>
+      <option value="polite">Polite</option>
+      <option value="friendly">Friendly</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="lengthSelect">Reply Length</label>
+    <select id="lengthSelect">
+      <option value="short">Short</option>
+      <option value="medium">Medium</option>
+      <option value="long">Long</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="userNameInput">Your Name</label>
+    <input
+      id="userNameInput"
+      type="text"
+      placeholder="Enter your name"
+      autocomplete="off"
+    />
+  </div>
+
+  <button id="saveButton" type="button">Save</button>
+  <div id="statusMessage">Saved!</div>
+  <div class="hint">Default: Polite + Medium</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
