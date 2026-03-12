@@ -1,5 +1,35 @@
 console.log("ReplyMate Gmail script loaded");
 
+// ReplyMate Configuration
+const REPLYMATE_CONFIG = {
+  // Backend configuration - can be overridden by environment variables in development
+  backend: {
+    baseUrl: "https://replymate-backend-bot8.onrender.com",
+    endpoints: {
+      usage: "/usage",
+      generate: "/generate-reply"
+    },
+    upgradeUrl: "https://replymate.ai/upgrade"
+  },
+  // UI configuration
+  ui: {
+    colors: {
+      normal: "#1a73e8",
+      hover: "#1558b0", 
+      loading: "#9aa0a6",
+      error: "#d93025",
+      text: "#ffffff"
+    },
+    timeouts: {
+      cache: 30000,        // 30 seconds
+      poll: 8000,          // 8 seconds
+      replyEditor: 12000,  // 12 seconds
+      replyButton: 12000, // 12 seconds
+      message: 5000        // 5 seconds
+    }
+  }
+};
+
 // Keys used by the popup UI (chrome.storage.local).
 const REPLYMATE_TONE_KEY = "replymateTone";
 const REPLYMATE_LENGTH_KEY = "replymateLength";
@@ -128,7 +158,7 @@ function getReplyMateUserId() {
 
 // Shared usage cache and sync system
 const USAGE_CACHE_KEY = "replymate_usage_cache";
-const USAGE_CACHE_TTL = 30000; // 30 seconds
+const USAGE_CACHE_TTL = REPLYMATE_CONFIG.ui.timeouts.cache; // Use config timeout
 
 // Get cached usage data if still valid
 function getCachedUsage() {
@@ -169,7 +199,7 @@ async function fetchUsageFromBackend() {
   try {
     const userId = await getReplyMateUserId();
     
-    const response = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
+    const response = await fetch(`${REPLYMATE_CONFIG.backend.baseUrl}${REPLYMATE_CONFIG.backend.endpoints.usage}`, {
       method: "GET",
       headers: {
         "X-User-ID": userId
@@ -279,7 +309,7 @@ async function updateUsageDisplay(usageDisplay) {
 async function generateAIReply(payload) {
   const userId = await getReplyMateUserId();
   
-  return fetch("https://replymate-backend-bot8.onrender.com/generate-reply", {
+  return fetch(`${REPLYMATE_CONFIG.backend.baseUrl}${REPLYMATE_CONFIG.backend.endpoints.generate}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -372,14 +402,15 @@ async function showReplyMateMessage(message) {
     if (messageEl.parentNode) {
       messageEl.parentNode.removeChild(messageEl);
     }
-  }, 5000);
+  }, REPLYMATE_CONFIG.ui.timeouts.message); // Use config timeout
 }
 
-const REPLYMATE_BUTTON_COLOR_NORMAL = "#1a73e8";
-const REPLYMATE_BUTTON_COLOR_HOVER = "#1558b0";
-const REPLYMATE_BUTTON_COLOR_LOADING = "#9aa0a6";
-const REPLYMATE_BUTTON_COLOR_ERROR = "#d93025";
-const REPLYMATE_BUTTON_TEXT_COLOR = "#ffffff";
+// Use configuration colors instead of hardcoded values
+const REPLYMATE_BUTTON_COLOR_NORMAL = REPLYMATE_CONFIG.ui.colors.normal;
+const REPLYMATE_BUTTON_COLOR_HOVER = REPLYMATE_CONFIG.ui.colors.hover;
+const REPLYMATE_BUTTON_COLOR_LOADING = REPLYMATE_CONFIG.ui.colors.loading;
+const REPLYMATE_BUTTON_COLOR_ERROR = REPLYMATE_CONFIG.ui.colors.error;
+const REPLYMATE_BUTTON_TEXT_COLOR = REPLYMATE_CONFIG.ui.colors.text;
 
 // Set button state with language support
 async function setReplyMateButtonState(button, state) {
@@ -429,21 +460,44 @@ function attachReplyMateButtonHoverStyles(button) {
   });
 }
 
-function buildLengthInstruction(length) {
+function buildLengthInstruction(length, language = DEFAULT_LANGUAGE) {
   const l = (length || DEFAULT_LENGTH).toLowerCase();
 
+  // Language-specific base instructions
+  const languageInstructions = {
+    english: "Write the reply in English.",
+    korean: "Write the reply in Korean (한국어).",
+    japanese: "Write the reply in Japanese (日本語)."
+  };
+
+  const languageInstruction = languageInstructions[language] || languageInstructions.english;
+
   if (l === "short") {
-    return "Write a very concise reply that usually fits into 1–2 short sentences. Be practical and direct with minimal padding, and do not add extra small talk beyond what feels natural for this email.";
+    const shortInstructions = {
+      english: "Write a very concise reply that usually fits into 1–2 short sentences. Be practical and direct with minimal padding, and do not add extra small talk beyond what feels natural for this email.",
+      korean: "매우 간결한 답장을 작성하세요. 보통 1-2개의 짧은 문장으로 맞춰야 합니다. 실용적이고 직접적으로 작성하고, 불필요한 말을 최소화하며, 이 이메일에 자연스럽게 느껴지는 것 이상의 잡담은 추가하지 마세요.",
+      japanese: "非常に簡潔な返信を書いてください。通常1〜2の短い文に収まるようにしてください。実用的で直接的に、最小限の言葉で、このメールに自然に感じられる以上の世間話を追加しないでください。"
+    };
+    return `${languageInstruction} ${shortInstructions[language] || shortInstructions.english}`;
   }
 
   if (l === "long") {
-    return "Write a noticeably more developed reply than a medium-length one. When the original email has enough substance, expand with more appreciation, context, clarifications, and a polished closing. Keep it natural and avoid unnecessary fluff if the email itself is very short.";
+    const longInstructions = {
+      english: "Write a noticeably more developed reply than a medium-length one. When the original email has enough substance, expand with more appreciation, context, clarifications, and a polished closing. Keep it natural and avoid unnecessary fluff if the email itself is very short.",
+      korean: "중간 길이보다 눈에 띄게 더 발전된 답장을 작성하세요. 원본 이메일에 충분한 내용이 있을 때, 더 많은 감사 표현, 맥락, 명확화, 그리고 세련된 마무리로 확장하세요. 자연스럽게 유지하고 이메일 자체가 매우 짧을 경우 불필요한 미사여구를 피하세요.",
+      japanese: "中程度の長さよりも明らかに発展した返信を書いてください。元のメールに十分な内容がある場合、より多くの感謝、文脈、明確化、そして洗練された結びで拡張してください。自然に保ち、メール自体が非常に短い場合は不要な飾り言葉を避けてください。"
+    };
+    return `${languageInstruction} ${longInstructions[language] || longInstructions.english}`;
   }
 
   // medium / default
-  return "Write a balanced, natural reply that feels clearly fuller than a short reply but lighter than a long one. Aim for moderate detail and politeness without sounding verbose, adapting the length to what feels appropriate for this email.";
+  const mediumInstructions = {
+    english: "Write a balanced, natural reply that feels clearly fuller than a short reply but lighter than a long one. Aim for moderate detail and politeness without sounding verbose, adapting the length to what feels appropriate for this email.",
+    korean: "균형 잡히고 자연스러운 답장을 작성하세요. 짧은 답장보다는 명백히 더 충실하게 느껴지지만 긴 답장보다는 가볍게 작성하세요. 이 이메일에 적합하다고 느껴지는 길이에 맞춰 상세함과 예의를 조절하며, 장황하게 들리지 않도록 하세요.",
+    japanese: "バランスの取れた自然な返信を書いてください。短い返信よりも明らかに充実しているが、長い返信よりも軽く感じられるようにしてください。このメールに適切だと感じられる長さに合わせて、適度な詳細と丁寧さを目指し、冗長に聞こえないようにしてください。"
+  };
+  return `${languageInstruction} ${mediumInstructions[language] || mediumInstructions.english}`;
 }
-
 
 // Finds the reply editor associated with a clicked ReplyMate button.
 function findEditorForButton(button) {
@@ -581,6 +635,7 @@ async function createReplyMateButton() {
     console.log("[ReplyMate DEBUG] Loading settings and extracting context");
     const settings = await loadReplyMateSettings();
     const threadContext = extractThreadContext();
+    const language = await getCurrentLanguage();
 
     const payload = {
       subject: threadContext.subject || "",
@@ -590,7 +645,7 @@ async function createReplyMateButton() {
       userName: settings.userName || threadContext.inferredUserName || "",
       tone: settings.tone || DEFAULT_TONE,
       length: settings.length || DEFAULT_LENGTH,
-      lengthInstruction: buildLengthInstruction(settings.length || DEFAULT_LENGTH),
+      lengthInstruction: buildLengthInstruction(settings.length || DEFAULT_LENGTH, language),
       additionalInstruction: instructionInput.value || "",
     };
 
@@ -676,7 +731,7 @@ async function createReplyMateButton() {
   upgradeLink.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    window.open("https://replymate.ai/upgrade", "_blank");
+    window.open(REPLYMATE_CONFIG.backend.upgradeUrl, "_blank");
   });
   container.appendChild(upgradeLink);
   
@@ -824,7 +879,7 @@ function extractThreadContext() {
 
 // Small polling helper for dynamic Gmail UI: repeatedly tries `getValue()` until
 // it returns a truthy value or times out.
-function poll(getValue, { timeoutMs = 8000, intervalMs = 200 } = {}) {
+function poll(getValue, { timeoutMs = REPLYMATE_CONFIG.ui.timeouts.poll, intervalMs = 200 } = {}) {
   return new Promise((resolve) => {
     const start = Date.now();
 
@@ -1040,7 +1095,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
         scrollMainThreadDown();
         return findReplyButtonInThread();
       }, {
-        timeoutMs: 12000,
+        timeoutMs: REPLYMATE_CONFIG.ui.timeouts.replyButton,
         intervalMs: 400,
       });
   
@@ -1067,7 +1122,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
       clickElementLikeUser(replyButton);
   
       const replyEditor = await poll(() => findActiveReplyEditor(), {
-        timeoutMs: 12000,
+        timeoutMs: REPLYMATE_CONFIG.ui.timeouts.replyEditor,
         intervalMs: 300,
       });
   
@@ -1104,6 +1159,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
 
         // Load user settings (tone, length, and user name).
         const settings = await loadReplyMateSettings();
+        const language = await getCurrentLanguage();
 
         // Extract context from the currently opened Gmail thread.
         const threadContext = extractThreadContext();
@@ -1116,7 +1172,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
           userName: settings.userName || "",
           tone: settings.tone || DEFAULT_TONE,
           length: settings.length || DEFAULT_LENGTH,
-          lengthInstruction: buildLengthInstruction(settings.length || DEFAULT_LENGTH),
+          lengthInstruction: buildLengthInstruction(settings.length || DEFAULT_LENGTH, language),
         };
 
         // Only include previousMessages when we actually have some.
@@ -1207,7 +1263,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
       try {
         const userId = await getReplyMateUserId();
         
-        const usageResponse = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
+        const usageResponse = await fetch(`${REPLYMATE_CONFIG.backend.baseUrl}${REPLYMATE_CONFIG.backend.endpoints.usage}`, {
           method: "GET",
           headers: {
             "X-User-ID": userId
