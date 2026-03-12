@@ -29,33 +29,135 @@ function loadReplyMateSettings() {
   });
 }
 
+// Get or create a persistent ReplyMate user ID
+function getReplyMateUserId() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(["replymate_user_id"], (result) => {
+        if (result.replymate_user_id) {
+          resolve(result.replymate_user_id);
+        } else {
+          const newUserId = crypto.randomUUID();
+          chrome.storage.local.set({ replymate_user_id: newUserId }, () => {
+            resolve(newUserId);
+          });
+        }
+      });
+    } catch {
+      // Fallback to a simple ID if crypto.randomUUID() or storage fails
+      const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+      resolve(fallbackId);
+    }
+  });
+}
+
+function showReplyMateMessage(message) {
+  const box = document.createElement("div");
+
+  box.textContent = message;
+
+  box.style.position = "fixed";
+  box.style.bottom = "20px";
+  box.style.right = "20px";
+  box.style.background = "#202124";
+  box.style.color = "white";
+  box.style.padding = "12px 16px";
+  box.style.borderRadius = "8px";
+  box.style.fontSize = "13px";
+  box.style.zIndex = "999999";
+  box.style.boxShadow = "0 2px 10px rgba(0,0,0,0.3)";
+
+  document.body.appendChild(box);
+
+  setTimeout(() => {
+    box.remove();
+  }, 4000);
+}
+
 // Call the ReplyMate backend to generate an AI reply.
 async function generateAIReply(payload) {
-  try {
-    const response = await fetch("http://localhost:3000/generate-reply", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload || {}),
-    });
+  const userId = await getReplyMateUserId();
+  
+  return fetch("http://localhost:3000/generate-reply", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-ID": userId
+    },
+    body: JSON.stringify(payload || {}),
+  })
+  .then(async (response) => {
 
     if (!response.ok) {
+
+      let errorData = {};
+
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        console.warn("[ReplyMate] Failed to parse error JSON");
+      }
+
+      console.log("[ReplyMate] errorData:", errorData);
+
+      if (response.status === 403 || errorData.error === "usage_limit_exceeded") {
+        console.warn("[ReplyMate] Monthly limit reached");
+
+        showReplyMateMessage(
+  "⚠ Monthly ReplyMate limit reached. Upgrade to generate more replies."
+);
+
+        const usageDisplay = document.querySelector(".replymate-usage-display");
+        if (usageDisplay) {
+          usageDisplay.textContent = "Remaining: 0 replies";
+        }
+
+        return "";
+      }
+
       console.error("[ReplyMate] Backend error", response.status, response.statusText);
       return "";
     }
 
     const data = await response.json();
+
     if (data && typeof data.reply === "string") {
       console.log("[ReplyMate] Backend reply received");
-      return data.reply;
+      return data;
     }
 
     console.error("[ReplyMate] Unexpected backend response shape", data);
     return "";
-  } catch (error) {
+  })
+  .catch((error) => {
     console.error("[ReplyMate] Failed to call backend", error);
     return "";
+  });
+}
+
+// Update usage display with current remaining replies
+async function updateUsageDisplay(usageDisplay) {
+  try {
+    const userId = await getReplyMateUserId();
+    
+    const response = await fetch("http://localhost:3000/usage", {
+      method: "GET",
+      headers: {
+        "X-User-ID": userId
+      }
+    });
+
+    const data = await response.json();
+
+    if (data && typeof data.remaining !== "undefined") {
+      usageDisplay.textContent = `Remaining: ${data.remaining} replies`;
+    } else {
+      usageDisplay.textContent = "Remaining: -";
+    }
+
+  } catch (error) {
+    console.error("[ReplyMate] Failed to fetch usage", error);
+    usageDisplay.textContent = "Remaining: -";
   }
 }
 
@@ -257,21 +359,41 @@ function createReplyMateButton() {
       additionalInstruction: instructionInput.value || "",
     };
 
-    const replyText = await generateAIReply(payload);
-    if (!replyText) {
+    const replyData = await generateAIReply(payload);
+    if (!replyData) {
       setReplyMateButtonState(button, "error");
       setTimeout(() => setReplyMateButtonState(button, "idle"), 2000);
       return;
     }
 
-    insertReplyIntoEditor(editor, replyText);
+    insertReplyIntoEditor(editor, replyData.reply);
     setReplyMateButtonState(button, "idle");
+    
+    // Update usage display if usage info is available
+    if (replyData && replyData.usage) {
+      const usageDisplay = container.querySelector(".replymate-usage-display");
+      if (usageDisplay) {
+        usageDisplay.textContent = `Remaining: ${replyData.usage.remaining} replies`;
+      }
+    }
     // Note: We do NOT clear the instruction input - it persists for repeated use
   });
 
   // Add both elements to container
   container.appendChild(button);
   container.appendChild(instructionInput);
+  
+  // Add usage display element
+  const usageDisplay = document.createElement("div");
+  usageDisplay.className = "replymate-usage-display";
+  usageDisplay.style.fontSize = "11px";
+  usageDisplay.style.color = "#666";
+  usageDisplay.style.marginTop = "4px";
+  usageDisplay.textContent = "Remaining: - replies";
+  container.appendChild(usageDisplay);
+  
+  // Fetch and update usage display
+  updateUsageDisplay(usageDisplay);
   
   return container;
 }
@@ -719,11 +841,12 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
 
         console.log("[ReplyMate payload]", payload);
   
-        const replyText = await generateAIReply(payload);
+        const replyData = await generateAIReply(payload);
   
-        if (!replyText) {
+        if (!replyData) {
           if (sourceButton) {
             setReplyMateButtonState(sourceButton, "error");
+            setTimeout(() => setReplyMateButtonState(sourceButton, "idle"), 2000);
           }
           if (inEmailButton) {
             setReplyMateButtonState(inEmailButton, "error");
@@ -732,12 +855,20 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
           return;
         }
   
-        insertReplyIntoEditor(replyEditor, replyText);
+        insertReplyIntoEditor(replyEditor, replyData.reply);
         if (sourceButton) {
           setReplyMateButtonState(sourceButton, "idle");
         }
         if (inEmailButton) {
           setReplyMateButtonState(inEmailButton, "idle");
+        }
+
+        // Update usage display if usage info is available (same as inner button)
+        if (replyData && replyData.usage) {
+          const usageDisplay = document.querySelector(".replymate-usage-display");
+          if (usageDisplay) {
+            usageDisplay.textContent = `Remaining: ${replyData.usage.remaining} replies`;
+          }
         }
       } finally {
         row.dataset.replymateWorkflowRunning = "0";
@@ -777,7 +908,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
     attachReplyMateButtonHoverStyles(button);
     setReplyMateButtonState(button, "idle");
 
-    button.addEventListener("click", (e) => {
+    button.addEventListener("click", async (e) => {
       e.stopPropagation();
       e.preventDefault();
       // Duplicate click prevention: ignore if already loading.
@@ -785,6 +916,32 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
         console.log("[ReplyMate] Hover button click ignored (already loading)");
         return;
       }
+
+      // Check usage before proceeding
+      try {
+        const userId = await getReplyMateUserId();
+        
+        const usageResponse = await fetch("http://localhost:3000/usage", {
+          method: "GET",
+          headers: {
+            "X-User-ID": userId
+          }
+        });
+
+        if (usageResponse.ok) {
+          const usage = await usageResponse.json();
+          if (usage.remaining <= 0) {
+            showReplyMateMessage("⚠ ReplyMate limit reached. Upgrade to generate more replies.");
+            setReplyMateButtonState(button, "error");
+            setTimeout(() => setReplyMateButtonState(button, "idle"), 2000);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("[ReplyMate] Failed to check usage:", error);
+        // Continue anyway on error
+      }
+
       runHoverGenerateReplyWorkflow(row, button);
     });
 
