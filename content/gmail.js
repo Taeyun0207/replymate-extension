@@ -639,7 +639,28 @@ async function createReplyMateButton() {
   usageDisplay.style.fontSize = "11px";
   usageDisplay.style.color = "#666";
   usageDisplay.style.marginTop = "4px";
-  usageDisplay.textContent = "Remaining: - replies";
+  
+  // Fetch and display current usage immediately
+  (async () => {
+    try {
+      const usageData = await getUsageData();
+      if (usageData) {
+        const formattedText = formatUsageDisplay(
+          usageData.plan || 'free',
+          usageData.remaining !== undefined ? usageData.remaining : 0,
+          usageData.limit || 0,
+          language
+        );
+        usageDisplay.textContent = formattedText;
+      } else {
+        usageDisplay.textContent = getTranslation("usageUnavailable", language);
+      }
+    } catch (error) {
+      console.error("[ReplyMate] Failed to fetch initial usage:", error);
+      usageDisplay.textContent = getTranslation("usageUnavailable", language);
+    }
+  })();
+  
   container.appendChild(usageDisplay);
   
   // Add upgrade link with translated text
