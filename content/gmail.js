@@ -4,10 +4,85 @@ console.log("ReplyMate Gmail script loaded");
 const REPLYMATE_TONE_KEY = "replymateTone";
 const REPLYMATE_LENGTH_KEY = "replymateLength";
 const REPLYMATE_USER_NAME_KEY = "replymateUserName";
+const REPLYMATE_LANGUAGE_KEY = "replymateLanguage";
 
 // Default values if nothing has been saved yet.
 const DEFAULT_TONE = "polite";
 const DEFAULT_LENGTH = "medium";
+const DEFAULT_LANGUAGE = "english";
+
+// Language translations for Gmail UI
+const TRANSLATIONS = {
+  english: {
+    aiReply: "AI Reply",
+    aiReplyHover: "AI Reply",
+    generating: "Generating...",
+    tryAgain: "Try Again",
+    limitReached: "Limit reached",
+    usageUnavailable: "Usage unavailable",
+    monthlyLimitReached: "You've reached your monthly ReplyMate limit. Upgrade to generate more replies.",
+    replyLimitReached: "ReplyMate limit reached. Upgrade to generate more replies.",
+    planNames: {
+      free: "Free Plan",
+      pro: "Pro Plan",
+      pro_plus: "Pro+ Plan"
+    },
+    repliesLeft: "replies left",
+    instructionPlaceholder: "Optional instructions (e.g. mention tomorrow)...",
+    upgradeToPro: "Upgrade to Pro"
+  },
+  korean: {
+    aiReply: "AI 답장",
+    aiReplyHover: "AI 답장",
+    generating: "생성 중...",
+    tryAgain: "다시 시도",
+    limitReached: "한도 도달",
+    usageUnavailable: "사용량을 사용할 수 없음",
+    monthlyLimitReached: "월간 ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
+    replyLimitReached: "ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
+    planNames: {
+      free: "무료 플랜",
+      pro: "Pro 플랜",
+      pro_plus: "Pro+ 플랜"
+    },
+    repliesLeft: "답장 남음",
+    instructionPlaceholder: "선택적 지침 추가 (예: 내일 언급)...",
+    upgradeToPro: "Pro로 업그레이드"
+  },
+  japanese: {
+    aiReply: "AI 返信",
+    aiReplyHover: "AI 返信",
+    generating: "生成中...",
+    tryAgain: "再試行",
+    limitReached: "制限に達しました",
+    usageUnavailable: "使用量を利用できません",
+    monthlyLimitReached: "月間ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
+    replyLimitReached: "ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
+    planNames: {
+      free: "無料プラン",
+      pro: "Proプラン",
+      pro_plus: "Pro+プラン"
+    },
+    repliesLeft: "返信残り",
+    instructionPlaceholder: "オプションの指示を追加（例：明日について言及）...",
+    upgradeToPro: "Proにアップグレード"
+  }
+};
+
+// Get translation for current language
+function getTranslation(key, language = DEFAULT_LANGUAGE) {
+  const lang = TRANSLATIONS[language] || TRANSLATIONS.english;
+  return lang[key] || TRANSLATIONS.english[key] || key;
+}
+
+// Get current language from storage
+async function getCurrentLanguage() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([REPLYMATE_LANGUAGE_KEY], (result) => {
+      resolve(result[REPLYMATE_LANGUAGE_KEY] || DEFAULT_LANGUAGE);
+    });
+  });
+}
 
 // Load tone/length/name settings saved by the popup.
 function loadReplyMateSettings() {
@@ -129,22 +204,19 @@ async function getUsageData() {
   return await fetchUsageFromBackend();
 }
 
-// Format usage display text with plan name and limit
-function formatUsageDisplay(plan, remaining, limit) {
-  const planNames = {
-    'free': 'Free Plan',
-    'pro': 'Pro Plan', 
-    'pro_plus': 'Pro+ Plan'
-  };
-  
-  const planName = planNames[plan] || 'Free Plan';
-  return `${planName} · ${remaining} / ${limit} replies left`;
+// Format usage display text with plan name and limit (with language support)
+function formatUsageDisplay(plan, remaining, limit, language = DEFAULT_LANGUAGE) {
+  const planTranslations = TRANSLATIONS[language]?.planNames || TRANSLATIONS.english.planNames;
+  const planName = planTranslations[plan] || planTranslations.free || "Free Plan";
+  const repliesLeft = getTranslation("repliesLeft", language);
+  return `${planName} · ${remaining} / ${limit} ${repliesLeft}`;
 }
 
-// Shared function to update all usage displays from backend data
-function updateUsageDisplayFromData(usageData) {
+// Shared function to update all usage displays from backend data (with language support)
+async function updateUsageDisplayFromData(usageData) {
   if (!usageData) return;
   
+  const language = await getCurrentLanguage();
   const plan = usageData.plan || 'free';
   const remaining = usageData.remaining !== undefined ? usageData.remaining : 0;
   const limit = usageData.limit; // Only use backend limit, no fallback
@@ -155,7 +227,7 @@ function updateUsageDisplayFromData(usageData) {
     return;
   }
   
-  const formattedText = formatUsageDisplay(plan, remaining, limit);
+  const formattedText = formatUsageDisplay(plan, remaining, limit, language);
   
   // Update Gmail UI displays
   const usageDisplays = document.querySelectorAll(".replymate-usage-display");
@@ -182,21 +254,23 @@ function updateUsageDisplayFromData(usageData) {
 // Update usage display with current remaining replies (fetches from backend)
 async function updateUsageDisplay(usageDisplay) {
   try {
+    const language = await getCurrentLanguage();
     const usageData = await getUsageData();
     
     if (usageData) {
-      updateUsageDisplayFromData(usageData);
+      await updateUsageDisplayFromData(usageData);
     } else {
       // Fallback to empty display
       if (usageDisplay) {
-        usageDisplay.textContent = "Usage unavailable";
+        usageDisplay.textContent = getTranslation("usageUnavailable", language);
       }
     }
 
   } catch (error) {
     console.error("[ReplyMate] Failed to update usage display:", error);
+    const language = await getCurrentLanguage();
     if (usageDisplay) {
-      usageDisplay.textContent = "Usage unavailable";
+      usageDisplay.textContent = getTranslation("usageUnavailable", language);
     }
   }
 }
@@ -229,14 +303,13 @@ async function generateAIReply(payload) {
 
       if (response.status === 403 || errorData.error === "usage_limit_exceeded") {
         console.warn("[ReplyMate] Monthly limit reached");
-
-        showReplyMateMessage(
-  "⚠️ You've reached your monthly ReplyMate limit. Upgrade to generate more replies."
-);
+        
+        const language = await getCurrentLanguage();
+        showReplyMateMessage(getTranslation("monthlyLimitReached", language));
 
         const usageDisplay = document.querySelector(".replymate-usage-display");
         if (usageDisplay) {
-          usageDisplay.textContent = "Limit reached";
+          usageDisplay.textContent = getTranslation("limitReached", language);
         }
 
         return "";
@@ -262,8 +335,10 @@ async function generateAIReply(payload) {
   });
 }
 
-// Show ReplyMate message to user
-function showReplyMateMessage(message) {
+// Show ReplyMate message to user (with language support)
+async function showReplyMateMessage(message) {
+  const language = await getCurrentLanguage();
+  
   // Create a temporary message element
   const messageEl = document.createElement("div");
   messageEl.textContent = message;
@@ -306,26 +381,28 @@ const REPLYMATE_BUTTON_COLOR_LOADING = "#9aa0a6";
 const REPLYMATE_BUTTON_COLOR_ERROR = "#d93025";
 const REPLYMATE_BUTTON_TEXT_COLOR = "#ffffff";
 
-function setReplyMateButtonState(button, state) {
+// Set button state with language support
+async function setReplyMateButtonState(button, state) {
   // state: "idle" | "loading" | "error"
+  const language = await getCurrentLanguage();
   button.dataset.replymateState = state;
   console.log("[ReplyMate] setReplyMateButtonState", { state, button });
 
   if (state === "loading") {
     button.disabled = true;
     button.style.cursor = "default";
-    button.textContent = "Generating...";
+    button.textContent = getTranslation("generating", language);
     button.style.backgroundColor = REPLYMATE_BUTTON_COLOR_LOADING;
   } else if (state === "error") {
     button.disabled = false;
     button.style.cursor = "pointer";
-    button.textContent = "Try Again";
+    button.textContent = getTranslation("tryAgain", language);
     button.style.backgroundColor = REPLYMATE_BUTTON_COLOR_ERROR;
   } else {
     // idle
     button.disabled = false;
     button.style.cursor = "pointer";
-    button.textContent = "AI Reply";
+    button.textContent = getTranslation("aiReply", language);
     button.style.backgroundColor = REPLYMATE_BUTTON_COLOR_NORMAL;
   }
 }
@@ -370,6 +447,12 @@ function buildLengthInstruction(length) {
 
 // Finds the reply editor associated with a clicked ReplyMate button.
 function findEditorForButton(button) {
+  // Add null guard to prevent TypeError
+  if (!button || !(button instanceof HTMLElement)) {
+    console.log("[ReplyMate DEBUG] findEditorForButton: button is null or not HTMLElement");
+    return null;
+  }
+
   // Reply editors typically live inside the opened conversation thread area.
   // We first try to stay within the same conversation / reply container as the button.
   const replyContainer =
@@ -378,11 +461,17 @@ function findEditorForButton(button) {
     button.closest("div[role='dialog']") ||
     button.parentElement;
 
-  if (!replyContainer) return null;
+  if (!replyContainer) {
+    console.log("[ReplyMate DEBUG] findEditorForButton: no reply container found");
+    return null;
+  }
 
-  return replyContainer.querySelector(
+  const editor = replyContainer.querySelector(
     'div[aria-label="Message Body"], div[role="textbox"][g_editable="true"]'
   );
+  
+  console.log("[ReplyMate DEBUG] findEditorForButton: editor found in container:", editor);
+  return editor;
 }
 
 // Heuristic: determine whether a given editor looks like a REPLY editor
@@ -406,7 +495,10 @@ function isReplyEditor(editor) {
   return false;
 }
 
-function createReplyMateButton() {
+// Create ReplyMate button with language support
+async function createReplyMateButton() {
+  const language = await getCurrentLanguage();
+  
   // Create a container for both button and input
   const container = document.createElement("div");
   container.style.display = "inline-flex";
@@ -427,10 +519,10 @@ function createReplyMateButton() {
   button.style.cursor = "pointer";
   button.style.fontSize = "12px";
 
-  // Create the additional instruction input
+  // Create the additional instruction input with translated placeholder
   const instructionInput = document.createElement("input");
   instructionInput.type = "text";
-  instructionInput.placeholder = "Add optional instruction (e.g. mention tomorrow)...";
+  instructionInput.placeholder = getTranslation("instructionPlaceholder", language);
   instructionInput.className = "replymate-instruction-input";
   instructionInput.style.padding = "4px 8px";
   instructionInput.style.border = "1px solid #ccc";
@@ -449,13 +541,11 @@ function createReplyMateButton() {
   // Prevent event bubbling but allow normal text selection
   instructionInput.addEventListener("mousedown", (e) => {
     e.stopPropagation();
-    // Don't preventDefault to allow text selection
     instructionInput.focus();
   });
   
   instructionInput.addEventListener("click", (e) => {
     e.stopPropagation();
-    // Don't preventDefault to allow text selection
     instructionInput.focus();
   });
   
@@ -464,25 +554,31 @@ function createReplyMateButton() {
   });
 
   attachReplyMateButtonHoverStyles(button);
-  setReplyMateButtonState(button, "idle");
+  await setReplyMateButtonState(button, "idle");
 
   // When clicked, call backend and insert generated reply into the correct editor.
   button.addEventListener("click", async (event) => {
+    console.log("[ReplyMate DEBUG] AI Reply button clicked");
+    
     // Duplicate click prevention: ignore if already loading.
     if (button.dataset.replymateState === "loading") {
-      console.log("[ReplyMate] Compose button click ignored (already loading)");
+      console.log("[ReplyMate DEBUG] Compose button click ignored (already loading)");
       return;
     }
 
-    setReplyMateButtonState(button, "loading");
+    console.log("[ReplyMate DEBUG] Setting button state to loading");
+    await setReplyMateButtonState(button, "loading");
 
-    const targetButton = event.currentTarget;
-    const editor = findEditorForButton(targetButton);
+    console.log("[ReplyMate DEBUG] Finding editor for button:", button);
+    const editor = findEditorForButton(button);
+    console.log("[ReplyMate DEBUG] Editor found:", editor);
     if (!editor) {
-      setReplyMateButtonState(button, "idle");
+      console.log("[ReplyMate DEBUG] No editor found, returning to idle state");
+      await setReplyMateButtonState(button, "idle");
       return;
     }
 
+    console.log("[ReplyMate DEBUG] Loading settings and extracting context");
     const settings = await loadReplyMateSettings();
     const threadContext = extractThreadContext();
 
@@ -498,24 +594,39 @@ function createReplyMateButton() {
       additionalInstruction: instructionInput.value || "",
     };
 
+    console.log("[ReplyMate DEBUG] Sending API request with payload:", payload);
     const replyData = await generateAIReply(payload);
+    console.log("[ReplyMate DEBUG] API response received:", replyData);
+    
     if (!replyData) {
-      setReplyMateButtonState(button, "error");
-      setTimeout(() => setReplyMateButtonState(button, "idle"), 2000);
+      console.log("[ReplyMate DEBUG] No reply data received, showing error");
+      await setReplyMateButtonState(button, "error");
+      setTimeout(async () => await setReplyMateButtonState(button, "idle"), 2000);
       return;
     }
 
-    insertReplyIntoEditor(editor, replyData.reply);
-    setReplyMateButtonState(button, "idle");
+    console.log("[ReplyMate DEBUG] Reply text to insert:", replyData.reply);
+    console.log("[ReplyMate DEBUG] Target editor element:", editor);
+    console.log("[ReplyMate DEBUG] Editor is contenteditable:", editor.contentEditable);
+    console.log("[ReplyMate DEBUG] Editor current content:", editor.innerHTML);
+    
+    try {
+      insertReplyIntoEditor(editor, replyData.reply);
+      console.log("[ReplyMate DEBUG] Reply inserted successfully");
+    } catch (error) {
+      console.error("[ReplyMate DEBUG] Error inserting reply:", error);
+    }
+    
+    await setReplyMateButtonState(button, "idle");
     
     // Update usage display if usage info is available
     if (replyData && replyData.usage) {
       updateUsageDisplayFromData(replyData.usage);
     } else {
-      // Fallback: refresh usage display if no usage info in response
       updateUsageDisplay(container.querySelector(".replymate-usage-display"));
     }
-    // Note: We do NOT clear the instruction input - it persists for repeated use
+    
+    console.log("[ReplyMate DEBUG] Button click flow completed");
   });
 
   // Add both elements to container
@@ -531,25 +642,22 @@ function createReplyMateButton() {
   usageDisplay.textContent = "Remaining: - replies";
   container.appendChild(usageDisplay);
   
-  // Add upgrade link
+  // Add upgrade link with translated text
   const upgradeLink = document.createElement("a");
   upgradeLink.className = "replymate-upgrade-link";
   upgradeLink.href = "#";
-  upgradeLink.textContent = "Upgrade to Pro";
+  upgradeLink.textContent = getTranslation("upgradeToPro", language);
   upgradeLink.style.fontSize = "11px";
   upgradeLink.style.color = "#1a73e8";
   upgradeLink.style.textDecoration = "none";
-  upgradeLink.style.cursor = "pointer";
-  upgradeLink.style.marginLeft = "8px";
+  upgradeLink.style.marginTop = "4px";
+  upgradeLink.style.display = "block";
   upgradeLink.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
     window.open("https://replymate.ai/upgrade", "_blank");
   });
   container.appendChild(upgradeLink);
-  
-  // Fetch and update usage display
-  updateUsageDisplay(usageDisplay);
   
   return container;
 }
@@ -890,7 +998,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
         console.log("[ReplyMate] Hover button workflow already running for this row");
         return;
       }
-      setReplyMateButtonState(sourceButton, "loading");
+      await setReplyMateButtonState(sourceButton, "loading");
       // Mark button so hide logic can keep it visible during workflow.
       sourceButton.dataset.replymateGenerating = "1";
     }
@@ -919,8 +1027,8 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
         console.log("[ReplyMate] Reply button not found");
         const inEmailButton = document.querySelector(".replymate-generate-button");
         if (inEmailButton) {
-          setReplyMateButtonState(inEmailButton, "error");
-          setTimeout(() => setReplyMateButtonState(inEmailButton, "idle"), 2000);
+          await setReplyMateButtonState(inEmailButton, "error");
+          setTimeout(async () => await setReplyMateButtonState(inEmailButton, "idle"), 2000);
         }
         return;
       }
@@ -945,13 +1053,13 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
       if (!replyEditor) {
         console.log("[ReplyMate] Reply editor not found");
         if (sourceButton) {
-          setReplyMateButtonState(sourceButton, "error");
-          setTimeout(() => setReplyMateButtonState(sourceButton, "idle"), 2000);
+          await setReplyMateButtonState(sourceButton, "error");
+          setTimeout(async () => await setReplyMateButtonState(sourceButton, "idle"), 2000);
         }
         const inEmailButton = document.querySelector(".replymate-generate-button");
         if (inEmailButton) {
-          setReplyMateButtonState(inEmailButton, "error");
-          setTimeout(() => setReplyMateButtonState(inEmailButton, "idle"), 2000);
+          await setReplyMateButtonState(inEmailButton, "error");
+          setTimeout(async () => await setReplyMateButtonState(inEmailButton, "idle"), 2000);
         }
         return;
       }
@@ -970,7 +1078,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
         // Find and update the in-email AI Reply button to show loading state
         const inEmailButton = document.querySelector(".replymate-generate-button");
         if (inEmailButton) {
-          setReplyMateButtonState(inEmailButton, "loading");
+          await setReplyMateButtonState(inEmailButton, "loading");
         }
 
         // Load user settings (tone, length, and user name).
@@ -1001,22 +1109,22 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
   
         if (!replyData) {
           if (sourceButton) {
-            setReplyMateButtonState(sourceButton, "error");
-            setTimeout(() => setReplyMateButtonState(sourceButton, "idle"), 2000);
+            await setReplyMateButtonState(sourceButton, "error");
+            setTimeout(async () => await setReplyMateButtonState(sourceButton, "idle"), 2000);
           }
           if (inEmailButton) {
-            setReplyMateButtonState(inEmailButton, "error");
-            setTimeout(() => setReplyMateButtonState(inEmailButton, "idle"), 2000);
+            await setReplyMateButtonState(inEmailButton, "error");
+            setTimeout(async () => await setReplyMateButtonState(inEmailButton, "idle"), 2000);
           }
           return;
         }
   
         insertReplyIntoEditor(replyEditor, replyData.reply);
         if (sourceButton) {
-          setReplyMateButtonState(sourceButton, "idle");
+          await setReplyMateButtonState(sourceButton, "idle");
         }
         if (inEmailButton) {
-          setReplyMateButtonState(inEmailButton, "idle");
+          await setReplyMateButtonState(inEmailButton, "idle");
         }
 
         // Update usage display if usage info is available (same as inner button)
@@ -1035,17 +1143,17 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
     } catch (error) {
       console.error("[ReplyMate] Error generating reply:", error);
       if (sourceButton) {
-        setReplyMateButtonState(sourceButton, "error");
-        setTimeout(() => setReplyMateButtonState(sourceButton, "idle"), 2000);
+        await setReplyMateButtonState(sourceButton, "error");
+        setTimeout(async () => await setReplyMateButtonState(sourceButton, "idle"), 2000);
       }
       if (inEmailButton) {
-        setReplyMateButtonState(inEmailButton, "error");
-        setTimeout(() => setReplyMateButtonState(inEmailButton, "idle"), 2000);
+        await setReplyMateButtonState(inEmailButton, "error");
+        setTimeout(async () => await setReplyMateButtonState(inEmailButton, "idle"), 2000);
       }
     }
   }
-  
-  function createHoverGenerateButton(row) {
+
+  async function createHoverGenerateButton(row) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = REPLYMATE_HOVER_BUTTON_CLASS;
@@ -1054,19 +1162,20 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
     button.style.backgroundColor = REPLYMATE_BUTTON_COLOR_NORMAL;
     button.style.color = REPLYMATE_BUTTON_TEXT_COLOR;
     button.style.border = "none";
-    button.style.borderRadius = "6px";
+    button.style.borderRadius = "4px";
     button.style.cursor = "pointer";
-    button.style.fontSize = "12px";
-    button.style.lineHeight = "1";
+    button.style.fontSize = "11px";
+    button.style.fontWeight = "500";
     button.style.height = "28px";
     button.style.whiteSpace = "nowrap";
 
     attachReplyMateButtonHoverStyles(button);
-    setReplyMateButtonState(button, "idle");
+    await setReplyMateButtonState(button, "idle");
 
     button.addEventListener("click", async (e) => {
       e.stopPropagation();
       e.preventDefault();
+      // ...
       // Duplicate click prevention: ignore if already loading.
       if (button.dataset.replymateState === "loading") {
         console.log("[ReplyMate] Hover button click ignored (already loading)");
@@ -1087,9 +1196,10 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
         if (usageResponse.ok) {
           const usage = await usageResponse.json();
           if (usage.remaining <= 0) {
-            showReplyMateMessage("⚠ ReplyMate limit reached. Upgrade to generate more replies.");
-            setReplyMateButtonState(button, "error");
-            setTimeout(() => setReplyMateButtonState(button, "idle"), 2000);
+            const language = await getCurrentLanguage();
+            showReplyMateMessage(getTranslation("replyLimitReached", language));
+            await setReplyMateButtonState(button, "error");
+            setTimeout(async () => await setReplyMateButtonState(button, "idle"), 2000);
             return;
           }
         }
@@ -1208,11 +1318,11 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
     return false;
   }
 
-  function showHoverButtonForRow(row) {
+  async function showHoverButtonForRow(row) {
     if (!(row instanceof Element)) return;
     if (row.querySelector(`.${REPLYMATE_HOVER_BUTTON_CLASS}`)) return;
   
-    const button = createHoverGenerateButton(row);
+    const button = await createHoverGenerateButton(row);
   
     const computed = window.getComputedStyle(row);
     if (computed.position === "static") {
@@ -1318,46 +1428,64 @@ function setupMessageListHoverHandlers() {
 }
 
 // Injects a single ReplyMate button per REPLY editor and avoids duplicates.
-function injectButtonIntoComposeAreas() {
+async function injectButtonIntoComposeAreas() {
   const editors = document.querySelectorAll(
     'div[aria-label="Message Body"], div[role="textbox"][g_editable="true"]'
   );
 
-  editors.forEach((editor) => {
+  for (const editor of editors) {
     // Only target editors that look like reply editors, not generic compose.
     if (!isReplyEditor(editor)) {
-      return;
+      continue;
     }
 
     const composeContainer = editor.closest("div[role='dialog']") || editor.parentElement;
-    if (!composeContainer) return;
+    if (!composeContainer) continue;
 
-    // Skip if this compose already has a ReplyMate button or instruction input.
-    if (composeContainer.querySelector(".replymate-generate-button") || 
-        composeContainer.querySelector(".replymate-instruction-input")) {
-      return;
+    // Check for existing ReplyMate UI in the actual parent where we append the button
+    const actualParent = editor.parentElement;
+    if (!actualParent) continue;
+    
+    // Skip if this parent already has any ReplyMate UI elements
+    if (actualParent.querySelector(".replymate-generate-button") || 
+        actualParent.querySelector(".replymate-instruction-input") ||
+        actualParent.querySelector(".replymate-usage-display") ||
+        actualParent.querySelector(".replymate-upgrade-link")) {
+      continue;
     }
 
-    const button = createReplyMateButton();
+    // Mark this parent to prevent race conditions during async button creation
+    if (actualParent.dataset.replymateInjecting === "true") {
+      continue;
+    }
+    actualParent.dataset.replymateInjecting = "true";
 
-    const buttonWrapper = document.createElement("div");
-    buttonWrapper.style.marginTop = "8px";
-    buttonWrapper.style.pointerEvents = "auto";
-    buttonWrapper.style.position = "relative";
-    buttonWrapper.style.zIndex = "1";
-    buttonWrapper.appendChild(button);
+    try {
+      const button = await createReplyMateButton();
 
-    editor.parentElement.appendChild(buttonWrapper);
-  });
+      const buttonWrapper = document.createElement("div");
+      buttonWrapper.className = "replymate-button-wrapper";
+      buttonWrapper.style.marginTop = "8px";
+      buttonWrapper.style.pointerEvents = "auto";
+      buttonWrapper.style.position = "relative";
+      buttonWrapper.style.zIndex = "1";
+      buttonWrapper.appendChild(button);
+
+      actualParent.appendChild(buttonWrapper);
+    } finally {
+      // Always clear the injecting flag
+      delete actualParent.dataset.replymateInjecting;
+    }
+  }
 }
 
 // Observe the Gmail DOM so that buttons are injected for new compose windows.
-const observer = new MutationObserver(() => {
+const observer = new MutationObserver(async () => {
   // Skip if user is typing in instruction input to avoid UI disruption
   if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("replymate-instruction-input")) {
     return;
   }
-  injectButtonIntoComposeAreas();
+  await injectButtonIntoComposeAreas();
 });
 
 observer.observe(document.body, {
@@ -1366,5 +1494,6 @@ observer.observe(document.body, {
 });
 
 // Initial injection for compose editors that already exist on page load.
-injectButtonIntoComposeAreas();
-setupMessageListHoverHandlers();
+injectButtonIntoComposeAreas().then(() => {
+  setupMessageListHoverHandlers();
+});
