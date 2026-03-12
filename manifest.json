@@ -12,8 +12,10 @@
   },
 
   "permissions": ["storage", "tabs"],
-  "host_permissions": ["http://localhost:3000/*"],
-
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "https://replymate-backend-bot8.onrender.com/*"
+  ], 
   "background": {
     "service_worker": "background/service-worker.js"
   },

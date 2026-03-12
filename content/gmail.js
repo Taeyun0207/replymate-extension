@@ -63,8 +63,8 @@ const TRANSLATIONS = {
     upgradeToProPlus: "Upgrade to Pro+"
   },
   korean: {
-    aiReply: "AI 답장",
-    aiReplyHover: "AI 답장",
+    aiReply: "AI Reply",
+    aiReplyHover: "AI Reply",
     generating: "생성 중...",
     tryAgain: "다시 시도",
     limitReached: "한도 도달",
@@ -77,26 +77,26 @@ const TRANSLATIONS = {
       pro_plus: "Pro+ 플랜"
     },
     repliesLeft: "답장 남음",
-    instructionPlaceholder: "선택적 지침 추가 (예: 내일 언급)...",
+    instructionPlaceholder: "선택적 지침 추가 (예: 내일 언급해줘)...",
     upgradeToPro: "Pro로 업그레이드",
     upgradeToProPlus: "Pro+로 업그레이드"
   },
   japanese: {
-    aiReply: "AI 返信",
-    aiReplyHover: "AI 返信",
-    generating: "生成中...",
+    aiReply: "AI Reply",
+    aiReplyHover: "AI Reply",
+    generating: "返信を生成中...",
     tryAgain: "再試行",
-    limitReached: "制限に達しました",
-    usageUnavailable: "使用量を利用できません",
-    monthlyLimitReached: "⚠️月間ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
-    replyLimitReached: "ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
+    limitReached: "利用上限に達しました",
+    usageUnavailable: "現在この機能は利用できません",
+    monthlyLimitReached: "⚠️ 今月の返信回数の上限に達しました。続けて利用するには、プランをアップグレードしてください。",
+    replyLimitReached: "返信回数の上限に達しました。続けて利用するには、プランをアップグレードしてください。",
     planNames: {
       free: "無料プラン",
       pro: "Proプラン",
       pro_plus: "Pro+プラン"
     },
-    repliesLeft: "返信残り",
-    instructionPlaceholder: "オプションの指示を追加（例：明日について言及）...",
+    repliesLeft: "残り返信可能数",
+    instructionPlaceholder: "追加の指示（例：明日について言及してください）...",
     upgradeToPro: "Proにアップグレード",
     upgradeToProPlus: "Pro+にアップグレード"
   }
@@ -303,24 +303,24 @@ async function updateUsageDisplayFromData(usageData) {
   });
   
   // Update all upgrade UI containers based on current plan and remaining replies
-  const upgradeContainers = document.querySelectorAll(".replymate-upgrade-link").forEach(link => {
-    const container = link.parentElement;
+  const upgradeContainers = document.querySelectorAll(".replymate-upgrade-container");
+  upgradeContainers.forEach(container => {
     if (container) {
       // Clear existing upgrade links
       container.innerHTML = "";
-      
+
       // 남은 리플라이가 0일 때만 업그레이드 박스 표시
       if (remaining <= 0) {
         // Re-render upgrade UI based on current plan
         if (plan === 'pro_plus') {
-          // Pro Plus plan - show current plan only
-          const currentPlanText = document.createElement("div");
-          currentPlanText.style.fontSize = "11px";
-          currentPlanText.style.color = "#188038";
-          currentPlanText.style.fontWeight = "600";
-          currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
-          container.appendChild(currentPlanText);
-          console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro Plus plan (no upgrades)");
+          // Pro Plus plan - show enjoy message
+          const enjoyText = document.createElement("div");
+          enjoyText.style.fontSize = "11px";
+          enjoyText.style.color = "#188038";
+          enjoyText.style.fontWeight = "600";
+          enjoyText.textContent = getTranslation("enjoyReplyMate", language);
+          container.appendChild(enjoyText);
+          console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro Plus plan (enjoy message)");
         } else if (plan === 'pro') {
           // Pro plan - show upgrade to Pro Plus only
           const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
@@ -448,8 +448,10 @@ async function showReplyMateMessage(message) {
   messageEl.textContent = message;
   messageEl.style.cssText = `
     position: fixed;
-    bottom: 20px;
     right: 20px;
+    bottom: 20px;
+    left: auto;
+    transform: none;
     background: #f8f9fa;
     color: #333;
     padding: 12px 16px;
@@ -457,12 +459,13 @@ async function showReplyMateMessage(message) {
     border: 1px solid #ddd;
     font-size: 14px;
     font-weight: 500;
-    z-index: 10000;
+    z-index: 999999;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    max-width: 400px;
-    min-width: 350px;
-    white-space: nowrap;
-    transform: translateX(0);
+    max-width: min(380px, calc(100vw - 24px));
+    width: max-content;
+    box-sizing: border-box;
+    word-wrap: break-word;
+    white-space: normal;
   `;
   
   // Add dark mode styles
@@ -472,19 +475,8 @@ async function showReplyMateMessage(message) {
     messageEl.style.borderColor = '#5f6368';
   }
   
+  // Append to document.body to avoid Gmail container clipping
   document.body.appendChild(messageEl);
-  
-  // 화면 밖으로 나가지 않도록 위치 조정
-  const rect = messageEl.getBoundingClientRect();
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  
-  // 오른쪽으로 넘어가면 왼쪽으로 조정
-  if (rect.right > viewportWidth) {
-    const overlap = rect.right - viewportWidth;
-    messageEl.style.right = 'auto';
-    messageEl.style.left = '20px';
-  }
   
   // Remove after 5 seconds
   setTimeout(() => {
@@ -809,6 +801,7 @@ async function createReplyMateButton() {
   
   // Add upgrade links with plan-based UI
   const upgradeContainer = document.createElement("div");
+  upgradeContainer.className = "replymate-upgrade-container";
   upgradeContainer.style.marginTop = "6px";
   upgradeContainer.style.display = "flex";
   upgradeContainer.style.gap = "8px";

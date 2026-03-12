@@ -43,3 +43,10 @@ If no values are saved yet, ReplyMate defaults to:
 ## Notes
 - ReplyMate currently works on the standard Gmail web UI at `https://mail.google.com/`.
 - Behavior may change if Gmail updates its DOM structure; the extension uses DOM queries and polling to stay in sync.
+
+## Privacy Policy
+
+ReplyMate respects user privacy and does not store email content.
+
+Privacy Policy:
+https://taeyun0207.github.io/replymate-legal/privacy.html

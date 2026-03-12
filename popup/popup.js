@@ -46,7 +46,7 @@ const TRANSLATIONS = {
     usageUnavailable: "사용량을 사용할 수 없음",
     upgradeMore: "Pro로 더 많은 답장 잠금 해제",
     upgradeUnlimited: "Pro+로 무제한 답장 잠금 해제",
-    enjoyReplyMate: "ReplyMate를 즐기세요!",
+    enjoyReplyMate: "ReplyMate를 마음껏 즐기세요!",
     upgradeToPro: "Pro로 업그레이드",
     upgradeToProPlus: "Pro+로 업그레이드",
     manageSubscription: "구독 관리",
@@ -58,15 +58,15 @@ const TRANSLATIONS = {
     repliesLeft: "답장 남음"
   },
   japanese: {
-    settings: "ReplyMate設定",
-    replyTone: "返信トーン",
-    replyLength: "返信長さ",
-    yourName: "あなたの名前",
+    settings: "設定",
+    replyTone: "返信のトーン",
+    replyLength: "返信返信の長さ長さ",
+    yourName: "表示名",
     language: "言語",
     save: "保存",
-    saved: "保存されました！",
+    saved: "保存完了",
     loading: "読み込み中...",
-    usageUnavailable: "使用量を利用できません",
+    usageUnavailable: "現在この機能は利用できません",
     upgradeMore: "Proでより多くの返信をアンロック",
     upgradeUnlimited: "Pro+で無制限の返信をアンロック",
     enjoyReplyMate: "ReplyMateをお楽しみください！",
@@ -78,7 +78,7 @@ const TRANSLATIONS = {
       pro: "Proプラン",
       pro_plus: "Pro+プラン"
     },
-    repliesLeft: "返信残り"
+    repliesLeft: "残り返信可能数"
   }
 };
 
@@ -102,9 +102,9 @@ function getReplyMateUserId() {
           });
         }
       });
-    } catch {
+    } catch (error) {
       // Fallback to a simple ID if crypto.randomUUID() or storage fails
-      const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+      const fallbackId = crypto.getRandomValues(new Uint32Array(4)).join("-");
       resolve(fallbackId);
     }
   });
@@ -223,10 +223,10 @@ function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE) {
   console.log(`[ReplyMate] Rendering billing UI for plan: ${plan}`);
 
   if (plan === 'pro_plus') {
-    // Pro Plus plan - show current plan, hide all upgrade buttons
-    upgradeTitle.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
+    // Pro Plus plan - show enjoy message, hide all upgrade buttons
+    upgradeTitle.textContent = getTranslation("enjoyReplyMate", language);
     upgradeButtons.style.display = "none"; // Hide all upgrade buttons
-    console.log("[ReplyMate] Billing UI rendered: Pro Plus plan (no upgrades)");
+    console.log("[ReplyMate] Billing UI rendered: Pro Plus plan (enjoy message)");
   } else if (plan === 'pro') {
     // Pro plan - show current plan + upgrade to Pro Plus only
     upgradeTitle.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro || "Pro Plan"}`;
@@ -262,16 +262,16 @@ function applyLanguageToUI(language = DEFAULT_LANGUAGE) {
   
   // Update option labels for tone and length
   const toneOptions = {
-    professional: language === "korean" ? "전문적" : language === "japanese" ? "専門的" : "Professional",
-    polite: language === "korean" ? "정중함" : language === "japanese" ? "丁寧" : "Polite", 
-    friendly: language === "korean" ? "친근함" : language === "japanese" ? "親切" : "Friendly",
-    direct: language === "korean" ? "직접적" : language === "japanese" ? "直接的" : "Direct"
+    professional: language === "korean" ? "전문적인" : language === "japanese" ? "ビジネス用に" : "Professional",
+    polite: language === "korean" ? "정중한" : language === "japanese" ? "丁寧に" : "Polite", 
+    friendly: language === "korean" ? "친근한" : language === "japanese" ? "カジュアルに" : "Friendly",
+    direct: language === "korean" ? "직설적인" : language === "japanese" ? "簡潔に" : "Direct"
   };
   
   const lengthOptions = {
-    short: language === "korean" ? "짧음" : language === "japanese" ? "短い" : "Short",
+    short: language === "korean" ? "짧음" : language === "japanese" ? "短め" : "Short",
     medium: language === "korean" ? "보통" : language === "japanese" ? "普通" : "Medium",
-    long: language === "korean" ? "김" : language === "japanese" ? "長い" : "Long"
+    long: language === "korean" ? "김" : language === "japanese" ? "長め" : "Long"
   };
   
   // Update language select options with native language names
