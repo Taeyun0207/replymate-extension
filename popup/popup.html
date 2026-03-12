@@ -13,7 +13,7 @@
       --border: #d0d7de;
       --select-bg: #ffffff;
       --select-text: #222222;
-      --button-bg: #1a73e8;
+      --button-bg: #7943f1;
       --button-text: #ffffff;
       --success: #188038;
     }
@@ -26,9 +26,9 @@
         --border: #5f6368;
         --select-bg: #303134;
         --select-text: #e8eaed;
-        --button-bg: #8ab4f8;
-        --button-text: #202124;
-        --success: #81c995;
+        --button-bg: #7943f1; /* 유지 */
+        --button-text: #ffffff; /* 유지 */
+        --success: #188038; /* 유지 */
       }
     }
 
@@ -113,6 +113,12 @@ option {
       background: var(--button-bg);
       color: var(--button-text);
       cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    button:hover {
+      background: #b794f6;
+      color: #222222;
     }
 
     button:disabled {
@@ -137,15 +143,8 @@ option {
       padding: 12px;
       border: 1px solid #e8eaed;
       border-radius: 8px;
-      background: #f8f9fa;
+      background: #EFE8FF;
       text-align: center;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .upgrade-box {
-        border-color: #5f6368;
-        background: #2d2e30;
-      }
     }
 
     .upgrade-title {
@@ -165,6 +164,77 @@ option {
 
     .upgrade-link:hover {
       text-decoration: underline;
+    }
+
+    .upgrade-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .upgrade-pro {
+      padding: 8px 12px;
+      border: 1px solid #ffffff;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #000000 ;
+      display: block;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .upgrade-pro:hover {
+      background: #D3D3D3  ;
+      text-decoration: none;
+      border-color: #D3D3D3  ;
+    }
+
+    .upgrade-pro-plus {
+      padding: 8px 12px;
+      border: 1px solid #FFFF99;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
+      color: #2C1810;
+      display: block;
+      text-align: center;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(212, 175, 55, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .upgrade-pro-plus:hover {
+      background: linear-gradient(135deg, #FFD700 0%, #B8860B 50%, #8B6914 100%);
+      text-decoration: none;
+      box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
+      transform: translateY(-1px);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      .upgrade-pro:hover {
+        background: #D3D3D3;
+        border-color: #D3D3D3;
+      }
+
+      .upgrade-pro-plus {
+        background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
+        color: #2C1810;
+      }
+
+      .upgrade-pro-plus:hover {
+        background: linear-gradient(135deg, #FFD700 0%, #B8860B 50%, #8B6914 100%);
+        text-decoration: none;
+        box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
+        transform: translateY(-1px);
+      }
+      
+      .upgrade-box {
+        border-color: #808080 ;
+        background: #808080 ;
+      }
+      
+      .upgrade-title {
+        color: #ffffff !important; /* 흰색으로 변경 */
+      }
     }
 
     .header {
@@ -241,7 +311,10 @@ option {
   
   <div class="upgrade-box">
     <div class="upgrade-title">Unlock more replies with Pro</div>
-    <a id="upgradeLink" href="#" class="upgrade-link">Upgrade to Pro</a>
+    <div class="upgrade-buttons">
+      <a id="upgradeProLink" href="#" class="upgrade-link upgrade-pro">Upgrade to Pro</a>
+      <a id="upgradeProPlusLink" href="#" class="upgrade-link upgrade-pro-plus">Upgrade to Pro+</a>
+    </div>
   </div>
   
   <script src="popup.js"></script>

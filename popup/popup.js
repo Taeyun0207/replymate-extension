@@ -212,31 +212,37 @@ function updatePlanUsageDisplay(usageData, language = DEFAULT_LANGUAGE) {
 
 // Update upgrade link based on current plan with language support
 function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE) {
-  const upgradeLink = document.getElementById("upgradeLink");
+  const upgradeProLink = document.getElementById("upgradeProLink");
+  const upgradeProPlusLink = document.getElementById("upgradeProPlusLink");
   const upgradeTitle = document.querySelector(".upgrade-title");
   const upgradeBox = document.querySelector(".upgrade-box");
+  const upgradeButtons = document.querySelector(".upgrade-buttons");
   
-  if (!upgradeLink || !upgradeTitle || !upgradeBox) return;
+  if (!upgradeProLink || !upgradeProPlusLink || !upgradeTitle || !upgradeBox || !upgradeButtons) return;
 
   console.log(`[ReplyMate] Rendering billing UI for plan: ${plan}`);
 
   if (plan === 'pro_plus') {
-    // Pro Plus plan - show current plan, hide upgrade buttons
+    // Pro Plus plan - show current plan, hide all upgrade buttons
     upgradeTitle.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
-    upgradeLink.textContent = getTranslation("manageSubscription", language);
-    upgradeBox.style.display = "none"; // Hide upgrade box for highest plan
+    upgradeButtons.style.display = "none"; // Hide all upgrade buttons
     console.log("[ReplyMate] Billing UI rendered: Pro Plus plan (no upgrades)");
   } else if (plan === 'pro') {
-    // Pro plan - show current plan + upgrade to Pro Plus
+    // Pro plan - show current plan + upgrade to Pro Plus only
     upgradeTitle.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro || "Pro Plan"}`;
-    upgradeLink.textContent = getTranslation("upgradeToProPlus", language);
-    upgradeBox.style.display = "block";
+    upgradeProLink.style.display = "none"; // Hide Pro button
+    upgradeProPlusLink.style.display = "block"; // Show Pro Plus button
+    upgradeProPlusLink.textContent = getTranslation("upgradeToProPlus", language);
+    upgradeButtons.style.display = "flex";
     console.log("[ReplyMate] Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
   } else {
-    // Free plan - show upgrade buttons for both Pro and Pro Plus
+    // Free plan - show both upgrade buttons
     upgradeTitle.textContent = getTranslation("upgradeMore", language);
-    upgradeLink.textContent = getTranslation("upgradeToPro", language);
-    upgradeBox.style.display = "block";
+    upgradeProLink.style.display = "block"; // Show Pro button
+    upgradeProPlusLink.style.display = "block"; // Show Pro Plus button
+    upgradeProLink.textContent = getTranslation("upgradeToPro", language);
+    upgradeProPlusLink.textContent = getTranslation("upgradeToProPlus", language);
+    upgradeButtons.style.display = "flex";
     console.log("[ReplyMate] Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
   }
 }
@@ -329,42 +335,40 @@ document.addEventListener("DOMContentLoaded", () => {
   const languageSelect = document.getElementById("languageSelect");
   const saveButton = document.getElementById("saveButton");
   const statusMessage = document.getElementById("statusMessage");
-  const upgradeLink = document.getElementById("upgradeLink");
+  const upgradeProLink = document.getElementById("upgradeProLink");
+  const upgradeProPlusLink = document.getElementById("upgradeProPlusLink");
 
   if (!toneSelect || !lengthSelect || !userNameInput || !languageSelect || !saveButton || !statusMessage) {
     return;
   }
 
-  // Add click handler for upgrade link
-  if (upgradeLink) {
-    upgradeLink.addEventListener("click", async (e) => {
+  // Add click handler for Pro upgrade link
+  if (upgradeProLink) {
+    upgradeProLink.addEventListener("click", async (e) => {
       e.preventDefault();
       
-      // Get current plan to determine which upgrade to offer
-      const usageData = await getUsageData();
-      const currentPlan = usageData?.plan || 'free';
-      
-      console.log(`[ReplyMate] Current plan from /usage: ${currentPlan}`);
-      
-      // Determine target plan based on current plan and button text
-      let targetPlan;
-      if (currentPlan === 'free') {
-        targetPlan = 'pro'; // Free -> Pro
-      } else if (currentPlan === 'pro') {
-        targetPlan = 'pro_plus'; // Pro -> Pro Plus
-      } else {
-        targetPlan = null;
-      }
-      
-      console.log(`[ReplyMate] Target plan passed to Stripe checkout: ${targetPlan}`);
+      console.log(`[ReplyMate] Pro upgrade button clicked - Target plan: pro`);
       
       // Use background service worker for Stripe checkout
-      if (targetPlan) {
-        chrome.runtime.sendMessage({
-          type: "CREATE_STRIPE_CHECKOUT",
-          targetPlan: targetPlan
-        });
-      }
+      chrome.runtime.sendMessage({
+        type: "CREATE_STRIPE_CHECKOUT",
+        targetPlan: "pro"
+      });
+    });
+  }
+
+  // Add click handler for Pro Plus upgrade link
+  if (upgradeProPlusLink) {
+    upgradeProPlusLink.addEventListener("click", async (e) => {
+      e.preventDefault();
+      
+      console.log(`[ReplyMate] Pro Plus upgrade button clicked - Target plan: pro_plus`);
+      
+      // Use background service worker for Stripe checkout
+      chrome.runtime.sendMessage({
+        type: "CREATE_STRIPE_CHECKOUT",
+        targetPlan: "pro_plus"
+      });
     });
   }
 
@@ -404,13 +408,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalText = saveButton.textContent;
     saveButton.disabled = true;
     
-    const language = languageSelect.value;
-    saveButton.textContent = getTranslation("saved", language);
-    saveButton.style.color = "#188038"; // Make text green
+    // Show larger green check mark with popup background
+    saveButton.textContent = "✓";
+    saveButton.style.background = "var(--bg)"; // Same as popup background
+    saveButton.style.color = "#22c55e";      // Green check mark
+    saveButton.style.fontSize = "18px";     // Larger check mark
+    saveButton.style.fontWeight = "bold";    // Bold check mark
 
     const tone = toneSelect.value;
     const length = lengthSelect.value;
     const userName = userNameInput.value || "";
+    const language = languageSelect.value;
 
     chrome.storage.local.set(
       {
@@ -420,14 +428,6 @@ document.addEventListener("DOMContentLoaded", () => {
         [LANGUAGE_KEY]: language,
       },
       () => {
-        // Apply the new language to UI after saving
-        applyLanguageToUI(language);
-        
-        // Re-set select values after applying language (since options were recreated)
-        toneSelect.value = tone;
-        lengthSelect.value = length;
-        languageSelect.value = language;
-        
         // Update usage display with new language
         loadUsageData(language);
         
@@ -435,12 +435,22 @@ document.addEventListener("DOMContentLoaded", () => {
         setTimeout(() => {
           saveButton.textContent = getTranslation("save", language);
           saveButton.disabled = false;
+          saveButton.style.background = ""; // Reset to original background
           saveButton.style.color = ""; // Reset to original color
+          saveButton.style.fontSize = ""; // Reset to original font size
+          saveButton.style.fontWeight = ""; // Reset to original font weight
+          
+          // Apply the new language to UI after resetting button
+          applyLanguageToUI(language);
+          
+          // Re-set select values after applying language (since options were recreated)
+          toneSelect.value = tone;
+          lengthSelect.value = length;
+          languageSelect.value = language;
         }, 1000);
       }
     );
   });
-});
 
 // Load usage data and update UI with language
 async function loadUsageData(language = DEFAULT_LANGUAGE) {
@@ -455,3 +465,4 @@ async function loadUsageData(language = DEFAULT_LANGUAGE) {
     updateUpgradeLink('free', language);
   }
 }
+});

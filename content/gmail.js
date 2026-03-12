@@ -14,8 +14,8 @@ const REPLYMATE_CONFIG = {
   // UI configuration
   ui: {
     colors: {
-      normal: "#1a73e8",
-      hover: "#1558b0", 
+      normal: "#7943f1",      // Save 버튼 호버 전 색상
+      hover: "#b794f6",       // Save 버튼 호버 색상
       loading: "#9aa0a6",
       error: "#d93025",
       text: "#ffffff"
@@ -50,7 +50,7 @@ const TRANSLATIONS = {
     tryAgain: "Try Again",
     limitReached: "Limit reached",
     usageUnavailable: "Usage unavailable",
-    monthlyLimitReached: "You've reached your monthly ReplyMate limit. Upgrade to generate more replies.",
+    monthlyLimitReached: "⚠️You've reached your monthly ReplyMate limit. Upgrade to generate more replies.",
     replyLimitReached: "ReplyMate limit reached. Upgrade to generate more replies.",
     planNames: {
       free: "Free Plan",
@@ -69,7 +69,7 @@ const TRANSLATIONS = {
     tryAgain: "다시 시도",
     limitReached: "한도 도달",
     usageUnavailable: "사용량을 사용할 수 없음",
-    monthlyLimitReached: "월간 ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
+    monthlyLimitReached: "⚠️월간 ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
     replyLimitReached: "ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
     planNames: {
       free: "무료 플랜",
@@ -88,7 +88,7 @@ const TRANSLATIONS = {
     tryAgain: "再試行",
     limitReached: "制限に達しました",
     usageUnavailable: "使用量を利用できません",
-    monthlyLimitReached: "月間ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
+    monthlyLimitReached: "⚠️月間ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
     replyLimitReached: "ReplyMate制限に達しました。より多くの返信を生成するにはアップグレードしてください。",
     planNames: {
       free: "無料プラン",
@@ -111,9 +111,21 @@ function getTranslation(key, language = DEFAULT_LANGUAGE) {
 // Get current language from storage
 async function getCurrentLanguage() {
   return new Promise((resolve) => {
-    chrome.storage.local.get([REPLYMATE_LANGUAGE_KEY], (result) => {
-      resolve(result[REPLYMATE_LANGUAGE_KEY] || DEFAULT_LANGUAGE);
-    });
+    try {
+      // chrome 객체와 chrome.storage가 존재하는지 먼저 확인
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        console.warn("[ReplyMate] Chrome storage API not available, using default language");
+        resolve(DEFAULT_LANGUAGE);
+        return;
+      }
+      
+      chrome.storage.local.get([REPLYMATE_LANGUAGE_KEY], (result) => {
+        resolve(result[REPLYMATE_LANGUAGE_KEY] || DEFAULT_LANGUAGE);
+      });
+    } catch (error) {
+      console.warn("[ReplyMate] Chrome storage not available, using default language:", error);
+      resolve(DEFAULT_LANGUAGE);
+    }
   });
 }
 
@@ -121,6 +133,13 @@ async function getCurrentLanguage() {
 function loadReplyMateSettings() {
   return new Promise((resolve) => {
     try {
+      // chrome 객체와 chrome.storage가 존재하는지 먼저 확인
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        console.warn("[ReplyMate] Chrome storage API not available, using default settings");
+        resolve({ tone: DEFAULT_TONE, length: DEFAULT_LENGTH, userName: "" });
+        return;
+      }
+      
       chrome.storage.local.get(
         [REPLYMATE_TONE_KEY, REPLYMATE_LENGTH_KEY, REPLYMATE_USER_NAME_KEY],
         (result) => {
@@ -141,6 +160,14 @@ function loadReplyMateSettings() {
 function getReplyMateUserId() {
   return new Promise((resolve) => {
     try {
+      // chrome 객체와 chrome.storage가 존재하는지 먼저 확인
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        console.warn("[ReplyMate] Chrome storage API not available, using fallback ID");
+        const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+        resolve(fallbackId);
+        return;
+      }
+      
       chrome.storage.local.get(["replymate_user_id"], (result) => {
         if (result.replymate_user_id) {
           resolve(result.replymate_user_id);
@@ -167,6 +194,13 @@ const USAGE_CACHE_TTL = REPLYMATE_CONFIG.ui.timeouts.cache; // Use config timeou
 function getCachedUsage() {
   return new Promise((resolve) => {
     try {
+      // chrome 객체와 chrome.storage가 존재하는지 먼저 확인
+      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+        console.warn("[ReplyMate] Chrome storage API not available, no cache");
+        resolve(null);
+        return;
+      }
+      
       chrome.storage.local.get([USAGE_CACHE_KEY], (result) => {
         if (result && result[USAGE_CACHE_KEY]) {
           const { data, timestamp } = result[USAGE_CACHE_KEY];
@@ -187,6 +221,12 @@ function getCachedUsage() {
 // Cache usage data with timestamp
 function setCachedUsage(usageData) {
   try {
+    // chrome 객체와 chrome.storage가 존재하는지 먼저 확인
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+      console.warn("[ReplyMate] Chrome storage API not available, skipping cache");
+      return;
+    }
+    
     const cacheData = {
       data: usageData,
       timestamp: Date.now()
@@ -241,8 +281,8 @@ async function getUsageData() {
 function formatUsageDisplay(plan, remaining, limit, language = DEFAULT_LANGUAGE) {
   const planTranslations = TRANSLATIONS[language]?.planNames || TRANSLATIONS.english.planNames;
   const planName = planTranslations[plan] || planTranslations.free || "Free Plan";
-  const repliesLeft = getTranslation("repliesLeft", language);
-  return `${planName} · ${remaining} / ${limit} ${repliesLeft}`;
+  // Gmail UI에서는 remaining replies 숨기고 플랜 이름만 표시
+  return `${planName}`;
 }
 
 // Shared function to update all usage displays from backend data (with language support)
@@ -252,7 +292,7 @@ async function updateUsageDisplayFromData(usageData) {
   const language = await getCurrentLanguage();
   const { plan, remaining, limit } = usageData;
   
-  console.log(`[ReplyMate] Gmail UI - Updating usage display, current plan: ${plan}`);
+  console.log(`[ReplyMate] Gmail UI - Updating usage display, current plan: ${plan}, remaining: ${remaining}`);
   
   const formattedText = formatUsageDisplay(plan, remaining, limit, language);
   
@@ -262,36 +302,42 @@ async function updateUsageDisplayFromData(usageData) {
     display.textContent = formattedText;
   });
   
-  // Update all upgrade UI containers based on current plan
+  // Update all upgrade UI containers based on current plan and remaining replies
   const upgradeContainers = document.querySelectorAll(".replymate-upgrade-link").forEach(link => {
     const container = link.parentElement;
     if (container) {
       // Clear existing upgrade links
       container.innerHTML = "";
       
-      // Re-render upgrade UI based on current plan
-      if (plan === 'pro_plus') {
-        // Pro Plus plan - show current plan only
-        const currentPlanText = document.createElement("div");
-        currentPlanText.style.fontSize = "11px";
-        currentPlanText.style.color = "#188038";
-        currentPlanText.style.fontWeight = "600";
-        currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
-        container.appendChild(currentPlanText);
-        console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro Plus plan (no upgrades)");
-      } else if (plan === 'pro') {
-        // Pro plan - show upgrade to Pro Plus only
-        const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-        container.appendChild(proPlusUpgradeLink);
-        console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro plan (upgrade to Pro Plus available)");
+      // 남은 리플라이가 0일 때만 업그레이드 박스 표시
+      if (remaining <= 0) {
+        // Re-render upgrade UI based on current plan
+        if (plan === 'pro_plus') {
+          // Pro Plus plan - show current plan only
+          const currentPlanText = document.createElement("div");
+          currentPlanText.style.fontSize = "11px";
+          currentPlanText.style.color = "#188038";
+          currentPlanText.style.fontWeight = "600";
+          currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
+          container.appendChild(currentPlanText);
+          console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro Plus plan (no upgrades)");
+        } else if (plan === 'pro') {
+          // Pro plan - show upgrade to Pro Plus only
+          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+          container.appendChild(proPlusUpgradeLink);
+          console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro plan (upgrade to Pro Plus available)");
+        } else {
+          // Free plan - show both Pro and Pro Plus upgrades
+          const proUpgradeLink = createUpgradeLink("pro", language);
+          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+          
+          container.appendChild(proUpgradeLink);
+          container.appendChild(proPlusUpgradeLink);
+          console.log("[ReplyMate] Gmail UI - Billing UI updated: Free plan (upgrades to Pro and Pro Plus available)");
+        }
       } else {
-        // Free plan - show both Pro and Pro Plus upgrades
-        const proUpgradeLink = createUpgradeLink("pro", language);
-        const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-        
-        container.appendChild(proUpgradeLink);
-        container.appendChild(proPlusUpgradeLink);
-        console.log("[ReplyMate] Gmail UI - Billing UI updated: Free plan (upgrades to Pro and Pro Plus available)");
+        // 남은 리플라이가 있으면 업그레이드 박스 숨기기 (빈 상태로 유지)
+        console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden (replies remaining)");
       }
     }
   });
@@ -363,9 +409,11 @@ async function generateAIReply(payload) {
         const language = await getCurrentLanguage();
         showReplyMateMessage(getTranslation("monthlyLimitReached", language));
 
-        const usageDisplay = document.querySelector(".replymate-usage-display");
-        if (usageDisplay) {
-          usageDisplay.textContent = getTranslation("limitReached", language);
+        // 리밋 도달 시 업그레이드 박스 표시
+        const usageData = await getUsageData();
+        if (usageData) {
+          usageData.remaining = 0; // remaining을 0으로 설정하여 업그레이드 박스 표시
+          await updateUsageDisplayFromData(usageData);
         }
 
         return "";
@@ -400,7 +448,7 @@ async function showReplyMateMessage(message) {
   messageEl.textContent = message;
   messageEl.style.cssText = `
     position: fixed;
-    top: 20px;
+    bottom: 20px;
     right: 20px;
     background: #f8f9fa;
     color: #333;
@@ -411,7 +459,10 @@ async function showReplyMateMessage(message) {
     font-weight: 500;
     z-index: 10000;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    max-width: 300px;
+    max-width: 400px;
+    min-width: 350px;
+    white-space: nowrap;
+    transform: translateX(0);
   `;
   
   // Add dark mode styles
@@ -422,6 +473,18 @@ async function showReplyMateMessage(message) {
   }
   
   document.body.appendChild(messageEl);
+  
+  // 화면 밖으로 나가지 않도록 위치 조정
+  const rect = messageEl.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  
+  // 오른쪽으로 넘어가면 왼쪽으로 조정
+  if (rect.right > viewportWidth) {
+    const overlap = rect.right - viewportWidth;
+    messageEl.style.right = 'auto';
+    messageEl.style.left = '20px';
+  }
   
   // Remove after 5 seconds
   setTimeout(() => {
@@ -747,48 +810,67 @@ async function createReplyMateButton() {
   // Add upgrade links with plan-based UI
   const upgradeContainer = document.createElement("div");
   upgradeContainer.style.marginTop = "6px";
+  upgradeContainer.style.display = "flex";
+  upgradeContainer.style.gap = "8px";
+  upgradeContainer.style.alignItems = "center";
   
   // Get current usage data to determine which upgrade options to show
   (async () => {
     try {
       const usageData = await getUsageData();
       const currentPlan = usageData?.plan || 'free';
+      const remaining = usageData?.remaining || 0;
       const language = await getCurrentLanguage();
       
-      console.log(`[ReplyMate] Gmail UI - Current plan from /usage: ${currentPlan}`);
+      console.log(`[ReplyMate] Gmail UI - Current plan from /usage: ${currentPlan}, remaining: ${remaining}`);
       console.log(`[ReplyMate] Gmail UI - Rendering billing UI for plan: ${currentPlan}`);
       
-      if (currentPlan === 'pro_plus') {
-        // Pro Plus plan - show current plan only
-        const currentPlanText = document.createElement("div");
-        currentPlanText.style.fontSize = "11px";
-        currentPlanText.style.color = "#188038";
-        currentPlanText.style.fontWeight = "600";
-        currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
-        upgradeContainer.appendChild(currentPlanText);
-        console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro Plus plan (no upgrades)");
-      } else {
-        // Free or Pro plan - show upgrade options
-        if (currentPlan === 'free') {
-          // Free plan - show both Pro and Pro Plus upgrades
-          const proUpgradeLink = createUpgradeLink("pro", language);
-          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-          
-          upgradeContainer.appendChild(proUpgradeLink);
-          upgradeContainer.appendChild(proPlusUpgradeLink);
-          console.log("[ReplyMate] Gmail UI - Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
-        } else if (currentPlan === 'pro') {
-          // Pro plan - show upgrade to Pro Plus only
-          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-          upgradeContainer.appendChild(proPlusUpgradeLink);
-          console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
+      // 남은 리플라이가 0일 때만 업그레이드 박스 표시
+      if (remaining <= 0) {
+        if (currentPlan === 'pro_plus') {
+          // Pro Plus plan - show current plan only
+          const currentPlanText = document.createElement("div");
+          currentPlanText.style.fontSize = "11px";
+          currentPlanText.style.color = "#188038";
+          currentPlanText.style.fontWeight = "600";
+          currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
+          upgradeContainer.appendChild(currentPlanText);
+          console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro Plus plan (no upgrades)");
+        } else {
+          // Free or Pro plan - show upgrade options horizontally
+          if (currentPlan === 'free') {
+            // Free plan - show both Pro and Pro Plus upgrades side by side
+            const proUpgradeLink = createUpgradeLink("pro", language);
+            const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+            
+            upgradeContainer.appendChild(proUpgradeLink);
+            upgradeContainer.appendChild(proPlusUpgradeLink);
+            console.log("[ReplyMate] Gmail UI - Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
+          } else if (currentPlan === 'pro') {
+            // Pro plan - show upgrade to Pro Plus only (centered)
+            const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+            upgradeContainer.appendChild(proPlusUpgradeLink);
+            console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
+          }
         }
+      } else {
+        // 남은 리플라이가 있으면 업그레이드 박스 숨기기 (빈 상태로 유지)
+        console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden in initial render (replies remaining)");
       }
     } catch (error) {
       console.error("[ReplyMate] Failed to load usage for upgrade UI:", error);
-      // Fallback - show basic upgrade link
-      const fallbackLink = createUpgradeLink("pro", await getCurrentLanguage());
-      upgradeContainer.appendChild(fallbackLink);
+      // 남은 리플라이가 0일 때만 폴백 업그레이드 링크 표시
+      try {
+        const usageData = await getUsageData();
+        const remaining = usageData?.remaining || 0;
+        if (remaining <= 0) {
+          const fallbackLink = createUpgradeLink("pro", await getCurrentLanguage());
+          upgradeContainer.appendChild(fallbackLink);
+        }
+      } catch {
+        // 에러 발생 시에도 업그레이드 박스 숨기기
+        console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden due to error");
+      }
     }
   })();
   
@@ -803,18 +885,72 @@ function createUpgradeLink(targetPlan, language) {
   upgradeLink.className = "replymate-upgrade-link";
   upgradeLink.href = "#";
   
+  // Check if Gmail is in dark mode
+  const isDarkMode = document.documentElement.classList.contains('dark') || 
+                     document.body.classList.contains('dark') ||
+                     window.matchMedia('(prefers-color-scheme: dark)').matches;
+  
   // Set text based on target plan
   if (targetPlan === 'pro') {
     upgradeLink.textContent = getTranslation("upgradeToPro", language);
+    upgradeLink.style.fontSize = "10px";
+    upgradeLink.style.textDecoration = "none";
+    upgradeLink.style.display = "inline-block";
+    upgradeLink.style.padding = "3px 6px";
+    upgradeLink.style.border = "1px solid #EFE8FF";
+    upgradeLink.style.borderRadius = "3px";
+    upgradeLink.style.backgroundColor = "#EFE8FF";
+    upgradeLink.style.color = "#000000";
+    upgradeLink.style.textAlign = "center";
+    upgradeLink.style.fontWeight = "500";
+    upgradeLink.style.transition = "all 0.2s ease";
+    upgradeLink.style.whiteSpace = "nowrap";
+    upgradeLink.style.lineHeight = "1.2";
+    
+    // Add hover effect for Pro button
+    upgradeLink.addEventListener("mouseenter", () => {
+      upgradeLink.style.backgroundColor = "#D6C5F0";
+      upgradeLink.style.textDecoration = "none";
+      upgradeLink.style.borderColor = "#D6C5F0";
+    });
+    
+    upgradeLink.addEventListener("mouseleave", () => {
+      upgradeLink.style.backgroundColor = "#EFE8FF";
+      upgradeLink.style.textDecoration = "none";
+      upgradeLink.style.borderColor = "#EFE8FF";
+    });
   } else if (targetPlan === 'pro_plus') {
     upgradeLink.textContent = getTranslation("upgradeToProPlus", language);
+    upgradeLink.style.fontSize = "10px";
+    upgradeLink.style.textDecoration = "none";
+    upgradeLink.style.display = "inline-block";
+    upgradeLink.style.padding = "3px 6px";
+    upgradeLink.style.border = "1px solid #FFFF99";
+    upgradeLink.style.borderRadius = "3px";
+    upgradeLink.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%)";
+    upgradeLink.style.color = "#2C1810";
+    upgradeLink.style.textAlign = "center";
+    upgradeLink.style.fontWeight = "600";
+    upgradeLink.style.boxShadow = "0 2px 4px rgba(212, 175, 55, 0.3)";
+    upgradeLink.style.transition = "all 0.2s ease";
+    upgradeLink.style.whiteSpace = "nowrap";
+    upgradeLink.style.lineHeight = "1.2";
+    
+    // Add hover effect for Pro Plus button (lighter)
+    upgradeLink.addEventListener("mouseenter", () => {
+      upgradeLink.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFED4E 100%)";
+      upgradeLink.style.textDecoration = "none";
+      upgradeLink.style.boxShadow = "0 4px 8px rgba(212, 175, 55, 0.4)";
+      upgradeLink.style.transform = "translateY(-1px)";
+    });
+    
+    upgradeLink.addEventListener("mouseleave", () => {
+      upgradeLink.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%)";
+      upgradeLink.style.textDecoration = "none";
+      upgradeLink.style.boxShadow = "0 2px 4px rgba(212, 175, 55, 0.3)";
+      upgradeLink.style.transform = "translateY(0px)";
+    });
   }
-  
-  upgradeLink.style.fontSize = "11px";
-  upgradeLink.style.color = "#1a73e8";
-  upgradeLink.style.textDecoration = "none";
-  upgradeLink.style.marginTop = "2px";
-  upgradeLink.style.display = "block";
   
   upgradeLink.addEventListener("click", async (e) => {
     e.preventDefault();
@@ -822,9 +958,8 @@ function createUpgradeLink(targetPlan, language) {
     
     console.log(`[ReplyMate] Gmail UI - Target plan passed to Stripe checkout: ${targetPlan}`);
     
-    // Use shared upgrade flow from popup
+    // Use background service worker for Stripe checkout
     try {
-      // Send message to popup to trigger Stripe checkout
       chrome.runtime.sendMessage({
         type: "CREATE_STRIPE_CHECKOUT",
         targetPlan: targetPlan
