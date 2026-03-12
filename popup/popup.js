@@ -218,18 +218,26 @@ function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE) {
   
   if (!upgradeLink || !upgradeTitle || !upgradeBox) return;
 
+  console.log(`[ReplyMate] Rendering billing UI for plan: ${plan}`);
+
   if (plan === 'pro_plus') {
-    upgradeTitle.textContent = getTranslation("enjoyReplyMate", language);
+    // Pro Plus plan - show current plan, hide upgrade buttons
+    upgradeTitle.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
     upgradeLink.textContent = getTranslation("manageSubscription", language);
     upgradeBox.style.display = "none"; // Hide upgrade box for highest plan
+    console.log("[ReplyMate] Billing UI rendered: Pro Plus plan (no upgrades)");
   } else if (plan === 'pro') {
-    upgradeTitle.textContent = getTranslation("upgradeUnlimited", language);
+    // Pro plan - show current plan + upgrade to Pro Plus
+    upgradeTitle.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro || "Pro Plan"}`;
     upgradeLink.textContent = getTranslation("upgradeToProPlus", language);
     upgradeBox.style.display = "block";
+    console.log("[ReplyMate] Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
   } else {
+    // Free plan - show upgrade buttons for both Pro and Pro Plus
     upgradeTitle.textContent = getTranslation("upgradeMore", language);
     upgradeLink.textContent = getTranslation("upgradeToPro", language);
     upgradeBox.style.display = "block";
+    console.log("[ReplyMate] Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
   }
 }
 
@@ -329,13 +337,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Add click handler for upgrade link
   if (upgradeLink) {
-    upgradeLink.addEventListener("click", (e) => {
+    upgradeLink.addEventListener("click", async (e) => {
       e.preventDefault();
-      window.open("https://replymate.ai/upgrade", "_blank");
+      
+      // Get current plan to determine which upgrade to offer
+      const usageData = await getUsageData();
+      const currentPlan = usageData?.plan || 'free';
+      
+      console.log(`[ReplyMate] Current plan from /usage: ${currentPlan}`);
+      
+      // Determine target plan based on current plan and button text
+      let targetPlan;
+      if (currentPlan === 'free') {
+        targetPlan = 'pro'; // Free -> Pro
+      } else if (currentPlan === 'pro') {
+        targetPlan = 'pro_plus'; // Pro -> Pro Plus
+      } else {
+        targetPlan = null;
+      }
+      
+      console.log(`[ReplyMate] Target plan passed to Stripe checkout: ${targetPlan}`);
+      
+      // Use background service worker for Stripe checkout
+      if (targetPlan) {
+        chrome.runtime.sendMessage({
+          type: "CREATE_STRIPE_CHECKOUT",
+          targetPlan: targetPlan
+        });
+      }
     });
   }
 
-  // Load saved values (tone, length, user name, and language) when the popup opens.
+// Load saved values (tone, length, user name, and language) when the popup opens.
   chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY], (result) => {
     const tone = result[TONE_KEY] || DEFAULT_TONE;
     const length = result[LENGTH_KEY] || DEFAULT_LENGTH;

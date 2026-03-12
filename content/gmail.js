@@ -59,7 +59,8 @@ const TRANSLATIONS = {
     },
     repliesLeft: "replies left",
     instructionPlaceholder: "Optional instructions (e.g. mention tomorrow)...",
-    upgradeToPro: "Upgrade to Pro"
+    upgradeToPro: "Upgrade to Pro",
+    upgradeToProPlus: "Upgrade to Pro+"
   },
   korean: {
     aiReply: "AI 답장",
@@ -77,7 +78,8 @@ const TRANSLATIONS = {
     },
     repliesLeft: "답장 남음",
     instructionPlaceholder: "선택적 지침 추가 (예: 내일 언급)...",
-    upgradeToPro: "Pro로 업그레이드"
+    upgradeToPro: "Pro로 업그레이드",
+    upgradeToProPlus: "Pro+로 업그레이드"
   },
   japanese: {
     aiReply: "AI 返信",
@@ -95,7 +97,8 @@ const TRANSLATIONS = {
     },
     repliesLeft: "返信残り",
     instructionPlaceholder: "オプションの指示を追加（例：明日について言及）...",
-    upgradeToPro: "Proにアップグレード"
+    upgradeToPro: "Proにアップグレード",
+    upgradeToProPlus: "Pro+にアップグレード"
   }
 };
 
@@ -247,15 +250,9 @@ async function updateUsageDisplayFromData(usageData) {
   if (!usageData) return;
   
   const language = await getCurrentLanguage();
-  const plan = usageData.plan || 'free';
-  const remaining = usageData.remaining !== undefined ? usageData.remaining : 0;
-  const limit = usageData.limit; // Only use backend limit, no fallback
+  const { plan, remaining, limit } = usageData;
   
-  // If no limit from backend, don't display anything
-  if (limit === undefined) {
-    console.warn("[ReplyMate] No limit data from backend");
-    return;
-  }
+  console.log(`[ReplyMate] Gmail UI - Updating usage display, current plan: ${plan}`);
   
   const formattedText = formatUsageDisplay(plan, remaining, limit, language);
   
@@ -265,16 +262,45 @@ async function updateUsageDisplayFromData(usageData) {
     display.textContent = formattedText;
   });
   
-  // Cache the updated data
-  setCachedUsage(usageData);
+  // Update all upgrade UI containers based on current plan
+  const upgradeContainers = document.querySelectorAll(".replymate-upgrade-link").forEach(link => {
+    const container = link.parentElement;
+    if (container) {
+      // Clear existing upgrade links
+      container.innerHTML = "";
+      
+      // Re-render upgrade UI based on current plan
+      if (plan === 'pro_plus') {
+        // Pro Plus plan - show current plan only
+        const currentPlanText = document.createElement("div");
+        currentPlanText.style.fontSize = "11px";
+        currentPlanText.style.color = "#188038";
+        currentPlanText.style.fontWeight = "600";
+        currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
+        container.appendChild(currentPlanText);
+        console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro Plus plan (no upgrades)");
+      } else if (plan === 'pro') {
+        // Pro plan - show upgrade to Pro Plus only
+        const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+        container.appendChild(proPlusUpgradeLink);
+        console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro plan (upgrade to Pro Plus available)");
+      } else {
+        // Free plan - show both Pro and Pro Plus upgrades
+        const proUpgradeLink = createUpgradeLink("pro", language);
+        const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+        
+        container.appendChild(proUpgradeLink);
+        container.appendChild(proPlusUpgradeLink);
+        console.log("[ReplyMate] Gmail UI - Billing UI updated: Free plan (upgrades to Pro and Pro Plus available)");
+      }
+    }
+  });
   
-  // Send message to popup to refresh if it's open
+  // Notify popup of usage update
   try {
-    chrome.runtime.sendMessage({ 
-      type: "USAGE_UPDATED", 
-      data: usageData 
-    }).catch(() => {
-      // Popup might not be open, that's fine
+    chrome.runtime.sendMessage({
+      type: "USAGE_UPDATED",
+      data: usageData
     });
   } catch (error) {
     // Ignore messaging errors
@@ -718,24 +744,99 @@ async function createReplyMateButton() {
   
   container.appendChild(usageDisplay);
   
-  // Add upgrade link with translated text
+  // Add upgrade links with plan-based UI
+  const upgradeContainer = document.createElement("div");
+  upgradeContainer.style.marginTop = "6px";
+  
+  // Get current usage data to determine which upgrade options to show
+  (async () => {
+    try {
+      const usageData = await getUsageData();
+      const currentPlan = usageData?.plan || 'free';
+      const language = await getCurrentLanguage();
+      
+      console.log(`[ReplyMate] Gmail UI - Current plan from /usage: ${currentPlan}`);
+      console.log(`[ReplyMate] Gmail UI - Rendering billing UI for plan: ${currentPlan}`);
+      
+      if (currentPlan === 'pro_plus') {
+        // Pro Plus plan - show current plan only
+        const currentPlanText = document.createElement("div");
+        currentPlanText.style.fontSize = "11px";
+        currentPlanText.style.color = "#188038";
+        currentPlanText.style.fontWeight = "600";
+        currentPlanText.textContent = `Current Plan: ${getTranslation("planNames", language)?.pro_plus || "Pro+ Plan"}`;
+        upgradeContainer.appendChild(currentPlanText);
+        console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro Plus plan (no upgrades)");
+      } else {
+        // Free or Pro plan - show upgrade options
+        if (currentPlan === 'free') {
+          // Free plan - show both Pro and Pro Plus upgrades
+          const proUpgradeLink = createUpgradeLink("pro", language);
+          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+          
+          upgradeContainer.appendChild(proUpgradeLink);
+          upgradeContainer.appendChild(proPlusUpgradeLink);
+          console.log("[ReplyMate] Gmail UI - Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
+        } else if (currentPlan === 'pro') {
+          // Pro plan - show upgrade to Pro Plus only
+          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
+          upgradeContainer.appendChild(proPlusUpgradeLink);
+          console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
+        }
+      }
+    } catch (error) {
+      console.error("[ReplyMate] Failed to load usage for upgrade UI:", error);
+      // Fallback - show basic upgrade link
+      const fallbackLink = createUpgradeLink("pro", await getCurrentLanguage());
+      upgradeContainer.appendChild(fallbackLink);
+    }
+  })();
+  
+  container.appendChild(upgradeContainer);
+  
+  return container;
+}
+
+// Helper function to create upgrade link
+function createUpgradeLink(targetPlan, language) {
   const upgradeLink = document.createElement("a");
   upgradeLink.className = "replymate-upgrade-link";
   upgradeLink.href = "#";
-  upgradeLink.textContent = getTranslation("upgradeToPro", language);
+  
+  // Set text based on target plan
+  if (targetPlan === 'pro') {
+    upgradeLink.textContent = getTranslation("upgradeToPro", language);
+  } else if (targetPlan === 'pro_plus') {
+    upgradeLink.textContent = getTranslation("upgradeToProPlus", language);
+  }
+  
   upgradeLink.style.fontSize = "11px";
   upgradeLink.style.color = "#1a73e8";
   upgradeLink.style.textDecoration = "none";
-  upgradeLink.style.marginTop = "4px";
+  upgradeLink.style.marginTop = "2px";
   upgradeLink.style.display = "block";
-  upgradeLink.addEventListener("click", (e) => {
+  
+  upgradeLink.addEventListener("click", async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    window.open(REPLYMATE_CONFIG.backend.upgradeUrl, "_blank");
+    
+    console.log(`[ReplyMate] Gmail UI - Target plan passed to Stripe checkout: ${targetPlan}`);
+    
+    // Use shared upgrade flow from popup
+    try {
+      // Send message to popup to trigger Stripe checkout
+      chrome.runtime.sendMessage({
+        type: "CREATE_STRIPE_CHECKOUT",
+        targetPlan: targetPlan
+      });
+    } catch (error) {
+      console.error("[ReplyMate] Failed to trigger Stripe checkout:", error);
+      // Fallback to original upgrade page
+      window.open(REPLYMATE_CONFIG.backend.upgradeUrl, "_blank");
+    }
   });
-  container.appendChild(upgradeLink);
   
-  return container;
+  return upgradeLink;
 }
 
 // Insert the provided reply text into a Gmail rich-text editor (contenteditable).
