@@ -90,7 +90,7 @@ function showReplyMateMessage(message) {
 async function generateAIReply(payload) {
   const userId = await getReplyMateUserId();
   
-  return fetch("http://localhost:3000/generate-reply", {
+  return fetch("https://replymate-backend-bot8.onrender.com/generate-reply", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -152,7 +152,7 @@ async function updateUsageDisplay(usageDisplay) {
   try {
     const userId = await getReplyMateUserId();
     
-    const response = await fetch("http://localhost:3000/usage", {
+    const response = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
       method: "GET",
       headers: {
         "X-User-ID": userId
@@ -963,7 +963,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
       try {
         const userId = await getReplyMateUserId();
         
-        const usageResponse = await fetch("http://localhost:3000/usage", {
+        const usageResponse = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
           method: "GET",
           headers: {
             "X-User-ID": userId
