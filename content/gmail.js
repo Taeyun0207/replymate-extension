@@ -51,6 +51,84 @@ function getReplyMateUserId() {
   });
 }
 
+// Shared usage cache and sync system
+const USAGE_CACHE_KEY = "replymate_usage_cache";
+const USAGE_CACHE_TTL = 30000; // 30 seconds
+
+// Get cached usage data if still valid
+function getCachedUsage() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get([USAGE_CACHE_KEY], (result) => {
+        if (result && result[USAGE_CACHE_KEY]) {
+          const { data, timestamp } = result[USAGE_CACHE_KEY];
+          if (Date.now() - timestamp < USAGE_CACHE_TTL) {
+            resolve(data);
+            return;
+          }
+        }
+        resolve(null);
+      });
+    } catch (error) {
+      console.warn("[ReplyMate] Failed to get cached usage:", error);
+      resolve(null);
+    }
+  });
+}
+
+// Cache usage data with timestamp
+function setCachedUsage(usageData) {
+  try {
+    const cacheData = {
+      data: usageData,
+      timestamp: Date.now()
+    };
+    chrome.storage.local.set({ [USAGE_CACHE_KEY]: cacheData });
+  } catch (error) {
+    console.warn("[ReplyMate] Failed to cache usage:", error);
+  }
+}
+
+// Shared function to fetch usage from backend
+async function fetchUsageFromBackend() {
+  try {
+    const userId = await getReplyMateUserId();
+    
+    const response = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
+      method: "GET",
+      headers: {
+        "X-User-ID": userId
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch usage');
+    }
+
+    const data = await response.json();
+    
+    // Cache the fresh data
+    setCachedUsage(data);
+    
+    return data;
+  } catch (error) {
+    console.error("[ReplyMate] Failed to fetch usage:", error);
+    return null;
+  }
+}
+
+// Shared function to get usage (cache first, then backend)
+async function getUsageData() {
+  // Try cache first
+  const cached = await getCachedUsage();
+  if (cached) {
+    return cached;
+  }
+  
+  // Fetch fresh data
+  return await fetchUsageFromBackend();
+}
+
 // Format usage display text with plan name and limit
 function formatUsageDisplay(plan, remaining, limit) {
   const planNames = {
@@ -63,51 +141,63 @@ function formatUsageDisplay(plan, remaining, limit) {
   return `${planName} · ${remaining} / ${limit} replies left`;
 }
 
-// Shared function to update usage display from backend data
+// Shared function to update all usage displays from backend data
 function updateUsageDisplayFromData(usageData) {
-  const usageDisplays = document.querySelectorAll(".replymate-usage-display");
-  if (!usageDisplays.length) return;
-  
-  const planLimits = {
-    'free': 50,
-    'pro': 300,
-    'pro_plus': 1000
-  };
+  if (!usageData) return;
   
   const plan = usageData.plan || 'free';
   const remaining = usageData.remaining !== undefined ? usageData.remaining : 0;
-  const limit = planLimits[plan] || 50;
+  const limit = usageData.limit; // Only use backend limit, no fallback
+  
+  // If no limit from backend, don't display anything
+  if (limit === undefined) {
+    console.warn("[ReplyMate] No limit data from backend");
+    return;
+  }
   
   const formattedText = formatUsageDisplay(plan, remaining, limit);
   
+  // Update Gmail UI displays
+  const usageDisplays = document.querySelectorAll(".replymate-usage-display");
   usageDisplays.forEach(display => {
     display.textContent = formattedText;
   });
+  
+  // Cache the updated data
+  setCachedUsage(usageData);
+  
+  // Send message to popup to refresh if it's open
+  try {
+    chrome.runtime.sendMessage({ 
+      type: "USAGE_UPDATED", 
+      data: usageData 
+    }).catch(() => {
+      // Popup might not be open, that's fine
+    });
+  } catch (error) {
+    // Ignore messaging errors
+  }
 }
 
 // Update usage display with current remaining replies (fetches from backend)
 async function updateUsageDisplay(usageDisplay) {
   try {
-    const userId = await getReplyMateUserId();
+    const usageData = await getUsageData();
     
-    const response = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
-      method: "GET",
-      headers: {
-        "X-User-ID": userId
-      }
-    });
-
-    const data = await response.json();
-
-    if (data && typeof data.remaining !== "undefined") {
-      updateUsageDisplayFromData(data);
+    if (usageData) {
+      updateUsageDisplayFromData(usageData);
     } else {
-      updateUsageDisplayFromData({ plan: 'free', remaining: 0 });
+      // Fallback to empty display
+      if (usageDisplay) {
+        usageDisplay.textContent = "Usage unavailable";
+      }
     }
 
   } catch (error) {
-    console.error("[ReplyMate] Failed to fetch usage", error);
-    updateUsageDisplayFromData({ plan: 'free', remaining: 0 });
+    console.error("[ReplyMate] Failed to update usage display:", error);
+    if (usageDisplay) {
+      usageDisplay.textContent = "Usage unavailable";
+    }
   }
 }
 
@@ -146,7 +236,7 @@ async function generateAIReply(payload) {
 
         const usageDisplay = document.querySelector(".replymate-usage-display");
         if (usageDisplay) {
-          usageDisplay.textContent = formatUsageDisplay('free', 0, 50);
+          usageDisplay.textContent = "Limit reached";
         }
 
         return "";
@@ -172,44 +262,42 @@ async function generateAIReply(payload) {
   });
 }
 
-// Update usage display with current remaining replies
-async function updateUsageDisplay(usageDisplay) {
-  try {
-    const userId = await getReplyMateUserId();
-
-    const response = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
-      method: "GET",
-      headers: {
-        "X-User-ID": userId
-      }
-    });
-
-    const data = await response.json();
-
-    if (!usageDisplay) return;
-
-    if (data && typeof data.remaining !== "undefined") {
-      const planNames = {
-        free: "Free Plan",
-        pro: "Pro Plan",
-        pro_plus: "Pro+ Plan"
-      };
-
-      const planName = planNames[data.plan] || "Free Plan";
-      const limit = typeof data.limit !== "undefined" ? data.limit : 50;
-      const remaining = data.remaining;
-
-      usageDisplay.textContent = `${planName} · ${remaining} / ${limit} replies left`;
-    } else {
-      usageDisplay.textContent = "Usage unavailable";
-    }
-  } catch (error) {
-    console.error("[ReplyMate] Failed to update usage display:", error);
-
-    if (usageDisplay) {
-      usageDisplay.textContent = "Usage unavailable";
-    }
+// Show ReplyMate message to user
+function showReplyMateMessage(message) {
+  // Create a temporary message element
+  const messageEl = document.createElement("div");
+  messageEl.textContent = message;
+  messageEl.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #f8f9fa;
+    color: #333;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 10000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    max-width: 300px;
+  `;
+  
+  // Add dark mode styles
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    messageEl.style.background = '#2d2e30';
+    messageEl.style.color = '#e8eaed';
+    messageEl.style.borderColor = '#5f6368';
   }
+  
+  document.body.appendChild(messageEl);
+  
+  // Remove after 5 seconds
+  setTimeout(() => {
+    if (messageEl.parentNode) {
+      messageEl.parentNode.removeChild(messageEl);
+    }
+  }, 5000);
 }
 
 const REPLYMATE_BUTTON_COLOR_NORMAL = "#1a73e8";
