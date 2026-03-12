@@ -189,13 +189,13 @@ function createReplyMateButton() {
   // Create the additional instruction input
   const instructionInput = document.createElement("input");
   instructionInput.type = "text";
-  instructionInput.placeholder = "Add optional instruction (e.g. mention tomorrow)";
+  instructionInput.placeholder = "Add optional instruction (e.g. mention tomorrow)...";
   instructionInput.className = "replymate-instruction-input";
   instructionInput.style.padding = "4px 8px";
   instructionInput.style.border = "1px solid #ccc";
   instructionInput.style.borderRadius = "4px";
   instructionInput.style.fontSize = "12px";
-  instructionInput.style.width = "200px";
+  instructionInput.style.width = "275px";
   instructionInput.style.minWidth = "150px";
   instructionInput.style.maxWidth = "300px";
   instructionInput.style.pointerEvents = "auto";
