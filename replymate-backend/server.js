@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 const OpenAI = require("openai");
 const { PLAN_LIMITS } = require("./src/config/plans");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,6 +47,74 @@ function recordUsage(userId) {
 }
 
 app.use(cors());
+
+// Stripe webhook handler - MUST be defined before express.json()
+app.post("/stripe/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error("STRIPE_WEBHOOK_SECRET not configured");
+    return res.status(500).json({ error: "Webhook secret not configured" });
+  }
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+  } catch (err) {
+    console.error("Webhook signature verification failed:", err.message);
+    return res.status(400).json({ error: `Webhook Error: ${err.message}` });
+  }
+
+  // Handle the checkout.session.completed event
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    
+    try {
+      const { userId, targetPlan } = session.metadata;
+      
+      if (!userId || !targetPlan) {
+        console.error("Missing metadata in checkout session:", session.id);
+        return res.status(400).json({ error: "Missing required metadata" });
+      }
+
+      // Validate target plan
+      if (!['pro', 'pro_plus'].includes(targetPlan)) {
+        console.error("Invalid target plan in metadata:", targetPlan);
+        return res.status(400).json({ error: "Invalid target plan" });
+      }
+
+      // Update user plan
+      const usage = getUserUsage(userId);
+      const oldPlan = usage.plan;
+      usage.plan = targetPlan;
+      usage.used = 0; // Reset usage when upgrading
+      usage.lastReset = new Date().toISOString();
+      userUsage.set(userId, usage);
+
+      console.log(`User ${userId} upgraded from ${oldPlan} to ${targetPlan}`);
+      
+      // Log the successful subscription
+      console.log(`Subscription completed:`, {
+        sessionId: session.id,
+        userId: userId,
+        targetPlan: targetPlan,
+        customerEmail: session.customer_email,
+        subscriptionId: session.subscription
+      });
+
+    } catch (error) {
+      console.error("Error processing checkout.session.completed:", error);
+      return res.status(500).json({ error: "Failed to process webhook" });
+    }
+  }
+
+  // Return 200 OK response
+  res.status(200).json({ received: true });
+});
+
+// Apply JSON parser to all other routes
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -205,6 +274,65 @@ app.post("/generate-reply", async (req, res) => {
       });
     }
   });
+
+// Create Stripe checkout session
+app.post("/billing/create-checkout-session", async (req, res) => {
+  try {
+    const { targetPlan } = req.body;
+    const userId = req.headers['x-user-id'] || 'default_user';
+    const userEmail = req.headers['x-user-email'] || null;
+
+    // Validate target plan
+    if (!targetPlan || !['pro', 'pro_plus'].includes(targetPlan)) {
+      return res.status(400).json({ 
+        error: "Invalid plan. Must be 'pro' or 'pro_plus'" 
+      });
+    }
+
+    // Get price ID from environment variables
+    const priceId = targetPlan === 'pro' 
+      ? process.env.STRIPE_PRICE_PRO 
+      : process.env.STRIPE_PRICE_PRO_PLUS;
+
+    if (!priceId) {
+      return res.status(500).json({ 
+        error: "Price ID not configured for the selected plan" 
+      });
+    }
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: `${req.protocol}://${req.get('host')}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${req.protocol}://${req.get('host')}/billing/cancel`,
+      metadata: {
+        userId: userId,
+        targetPlan: targetPlan,
+        ...(userEmail && { userEmail: userEmail })
+      },
+      customer_email: userEmail || undefined,
+      allow_promotion_codes: true,
+      billing_address_collection: 'auto',
+    });
+
+    res.json({
+      checkoutUrl: session.url
+    });
+
+  } catch (error) {
+    console.error("Stripe checkout session error:", error);
+    res.status(500).json({ 
+      error: "Failed to create checkout session" 
+    });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`ReplyMate API running on port ${PORT}`);
