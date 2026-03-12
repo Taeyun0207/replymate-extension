@@ -3,6 +3,7 @@ const cors = require("cors");
 require("dotenv").config();
 const OpenAI = require("openai");
 const { PLAN_LIMITS } = require("./src/config/plans");
+const { getUser, updateUserPlan, recordUsage } = require("./src/database");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
@@ -11,39 +12,29 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
 
-// In-memory usage tracking (in production, use a database)
-const userUsage = new Map(); // userId -> { plan, used, lastReset }
-
-// Helper function to get or create user usage record
-function getUserUsage(userId) {
-  if (!userUsage.has(userId)) {
-    userUsage.set(userId, {
-      plan: 'free', // Default to free plan
-      used: 0,
-      lastReset: new Date().toISOString()
-    });
-  }
-  return userUsage.get(userId);
-}
-
 // Helper function to check if user has exceeded their limit
-function checkUsageLimit(userId) {
-  const usage = getUserUsage(userId);
-  const limit = PLAN_LIMITS[usage.plan] || PLAN_LIMITS.free;
-  return {
-    canProceed: usage.used < limit,
-    remaining: Math.max(0, limit - usage.used),
-    used: usage.used,
-    limit: limit,
-    plan: usage.plan
-  };
-}
-
-// Helper function to record usage
-function recordUsage(userId) {
-  const usage = getUserUsage(userId);
-  usage.used += 1;
-  userUsage.set(userId, usage);
+async function checkUsageLimit(userId) {
+  try {
+    const usage = await getUser(userId);
+    const limit = PLAN_LIMITS[usage.plan] || PLAN_LIMITS.free;
+    return {
+      proceed: usage.used < limit,
+      remaining: Math.max(0, limit - usage.used),
+      used: usage.used,
+      limit: limit,
+      plan: usage.plan
+    };
+  } catch (error) {
+    console.error('Error checking usage limit:', error);
+    // Fallback to free plan limits
+    return {
+      proceed: false,
+      remaining: 0,
+      used: 0,
+      limit: PLAN_LIMITS.free,
+      plan: 'free'
+    };
+  }
 }
 
 app.use(cors());
@@ -85,23 +76,20 @@ app.post("/stripe/webhook", express.raw({ type: 'application/json' }), async (re
         return res.status(400).json({ error: "Invalid target plan" });
       }
 
-      // Update user plan
-      const usage = getUserUsage(userId);
-      const oldPlan = usage.plan;
-      usage.plan = targetPlan;
-      usage.used = 0; // Reset usage when upgrading
-      usage.lastReset = new Date().toISOString();
-      userUsage.set(userId, usage);
-
-      console.log(`User ${userId} upgraded from ${oldPlan} to ${targetPlan}`);
+      // Update user plan in database
+      const stripeCustomerId = session.customer;
+      const stripeSubscriptionId = session.subscription;
       
-      // Log the successful subscription
-      console.log(`Subscription completed:`, {
+      await updateUserPlan(userId, targetPlan, stripeCustomerId, stripeSubscriptionId);
+
+      console.log(`[Stripe] User ${userId} upgraded to ${targetPlan}`);
+      console.log(`[Stripe] Subscription completed:`, {
         sessionId: session.id,
         userId: userId,
         targetPlan: targetPlan,
         customerEmail: session.customer_email,
-        subscriptionId: session.subscription
+        subscriptionId: session.subscription,
+        stripeCustomerId: stripeCustomerId
       });
 
     } catch (error) {
@@ -122,43 +110,30 @@ app.get("/", (req, res) => {
 });
 
 // Get current usage
-app.get("/usage", (req, res) => {
-  const userId = req.headers['x-user-id'] || 'default_user';
-  const usage = checkUsageLimit(userId);
-  res.json(usage);
-});
-
-// Change user plan
-app.post("/plan", (req, res) => {
-  const userId = req.headers['x-user-id'] || 'default_user';
-  const { plan } = req.body;
-  
-  if (!PLAN_LIMITS.hasOwnProperty(plan)) {
-    return res.status(400).json({ error: "Invalid plan" });
+app.get("/usage", async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || 'default_user';
+    const usage = await checkUsageLimit(userId);
+    res.json(usage);
+  } catch (error) {
+    console.error('Error getting usage:', error);
+    res.status(500).json({ error: "Failed to get usage" });
   }
-  
-  const usage = getUserUsage(userId);
-  usage.plan = plan;
-  usage.used = 0; // Reset usage when changing plans
-  usage.lastReset = new Date().toISOString();
-  userUsage.set(userId, usage);
-  
-  res.json({ 
-    plan: usage.plan,
-    limit: PLAN_LIMITS[plan],
-    used: 0,
-    remaining: PLAN_LIMITS[plan]
-  });
 });
 
 app.post("/generate-reply", async (req, res) => {
     try {
       // Get user ID (in production, use authentication)
-      const userId = req.headers['x-user-id'] || 'default_user';
+      const userId = req.headers["x-user-id"] || 'default_user';
+      
+      // Debug logging
+      console.log("[DEBUG] userId:", userId);
       
       // Check usage limits
-      const usageCheck = checkUsageLimit(userId);
-      if (!usageCheck.canProceed) {
+      const usageCheck = await checkUsageLimit(userId);
+      console.log("[DEBUG] usageCheck:", usageCheck);
+      
+      if (!usageCheck.proceed) {
         return res.status(403).json({
           error: "usage_limit_exceeded",
           remaining: usageCheck.remaining
@@ -252,10 +227,10 @@ app.post("/generate-reply", async (req, res) => {
       }
 
       // Record successful usage
-      recordUsage(userId);
+      await recordUsage(userId);
       
       // Get updated usage info
-      const updatedUsage = checkUsageLimit(userId);
+      const updatedUsage = await checkUsageLimit(userId);
 
       res.json({ 
         reply,
