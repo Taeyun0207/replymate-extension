@@ -199,11 +199,14 @@ app.post("/generate-reply", async (req, res) => {
         }
       }
       
-      // Auto length determination logic
+      // Auto length determination logic - DO NOT override frontend lengthInstruction
+      // The frontend already contains critical language and placeholder rules
+      // Only use backend auto logic if frontend didn't provide lengthInstruction
       let effectiveLengthInstruction = lengthInstruction;
       const length = req.body.length || "auto";
       
-      if (length.toLowerCase() === "auto") {
+      // Only use backend auto logic if lengthInstruction is missing or empty
+      if (!lengthInstruction && length.toLowerCase() === "auto") {
         console.log("[DEBUG] Auto length mode: analyzing message to determine appropriate length");
         
         // Step 1: Acknowledgement Detection (highest priority)
@@ -324,6 +327,8 @@ app.post("/generate-reply", async (req, res) => {
       emailThreadText += `Latest message (${latestSpeakerName}):\n${latestMessage || ""}`;
 
       const prompt = `
+${lengthInstruction || ""}
+
 Subject: ${subject || ""}
 
 Email thread:
@@ -350,63 +355,64 @@ Instructions:
 - Write only the email body.
 - Do not include a subject line.
 - ${toneInstructions}
-- ${effectiveLengthInstruction || "Keep the reply length appropriate for the message."}
-${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` : ""}
 - End with an appropriate closing using the sender name if available.
+${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` : ""}
 `;
 
-      // Generate language-specific system prompts
-      const languageSystemPrompts = {
-        english: "You generate natural, human-like email replies in English for Gmail users. Write like a real person would respond - conversational, authentic, and context-aware. Avoid overly formal or robotic language.",
-        korean: "You generate natural, human-like email replies in Korean (한국어) for Gmail users. Write like a real person would respond - conversational, authentic, and context-aware. Avoid overly formal or robotic language.",
-        japanese: "You generate natural, human-like email replies in Japanese (日本語) for Gmail users. Write like a real person would respond - conversational, authentic, and context-aware. Avoid overly formal or robotic language."
-      };
+// Generate language-specific system prompts with ABSOLUTE language enforcement
+const languageSystemPrompts = {
+  english: "CRITICAL: You generate replies ONLY in English. Never write in any other language. Regardless of the email's language, you must reply strictly in English. Follow the user's language setting absolutely - no exceptions.",
+  korean: "CRITICAL: You generate replies ONLY in Korean (한국어). Never write in any other language. Regardless of the email's language, you must reply strictly in Korean. Follow the user's language setting absolutely - no exceptions.",
+  japanese: "CRITICAL: You generate replies ONLY in Japanese (日本語). Never write in any other language. Regardless of the email's language, you must reply strictly in Japanese. Follow the user's language setting absolutely - no exceptions."
+};
 
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: languageSystemPrompts[language] || languageSystemPrompts.english,
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-      });
-  
-      const reply = completion.choices?.[0]?.message?.content?.trim();
-  
-      if (!reply) {
-        return res.status(500).json({
-          error: "OpenAI returned an empty reply.",
-        });
-      }
+try {
+  const completion = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: languageSystemPrompts[language] || languageSystemPrompts.english,
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    temperature: 0.7,
+  });
 
-      // Record successful usage
-      await recordUsage(userId);
-      
-      // Get updated usage info
-      const updatedUsage = await checkUsageLimit(userId);
+  const reply = completion.choices?.[0]?.message?.content?.trim();
 
-      res.json({ 
-        reply,
-        usage: {
-          plan: updatedUsage.plan,
-          used: updatedUsage.used,
-          limit: updatedUsage.limit,
-          remaining: updatedUsage.remaining
-        }
-      });
-    } catch (error) {
-      console.error("OpenAI generation error:", error);
+  if (!reply) {
+    return res.status(500).json({
+      error: "OpenAI returned an empty reply.",
+    });
+  }
+
+  // Record successful usage
+  await recordUsage(userId);
   
-      res.status(500).json({
-        error: "Failed to generate AI reply.",
-      });
+  // Get updated usage info
+  const updatedUsage = await checkUsageLimit(userId);
+
+  res.json({ 
+    reply,
+    usage: {
+      plan: updatedUsage.plan,
+      used: updatedUsage.used,
+      limit: updatedUsage.limit,
+      remaining: updatedUsage.remaining
     }
+  });
+} catch (error) {
+  console.error("OpenAI generation error:", error);
+
+
+res.status(500).json({
+    error: "Failed to generate AI reply.",
+  });
+}
   });
 
 // Create Stripe checkout session
@@ -423,16 +429,8 @@ app.post("/billing/create-checkout-session", async (req, res) => {
       });
     }
 
-    // Get price ID from environment variables
-    const priceId = targetPlan === 'pro' 
-      ? process.env.STRIPE_PRICE_PRO 
-      : process.env.STRIPE_PRICE_PRO_PLUS;
-
-    if (!priceId) {
-      return res.status(500).json({ 
-        error: "Price ID not configured for the selected plan" 
-      });
-    }
+    
+    
 
     // Create checkout session
     const session = await stripe.checkout.sessions.create({
