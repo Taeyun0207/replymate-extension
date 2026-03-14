@@ -7,8 +7,9 @@ const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || "";
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Supabase table: users (snake_case columns)
-// CREATE TABLE users (
+// Supabase table: user_usage (avoids conflict with auth.users)
+// Run in Supabase SQL Editor:
+// CREATE TABLE IF NOT EXISTS public.user_usage (
 //   user_id TEXT PRIMARY KEY,
 //   plan TEXT NOT NULL DEFAULT 'free',
 //   used INTEGER NOT NULL DEFAULT 0,
@@ -19,6 +20,9 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 //   created_at TIMESTAMPTZ NOT NULL,
 //   updated_at TIMESTAMPTZ NOT NULL
 // );
+// ALTER TABLE public.user_usage ENABLE ROW LEVEL SECURITY;
+// CREATE POLICY "Service role full access" ON public.user_usage FOR ALL USING (true) WITH CHECK (true);
+const TABLE_NAME = process.env.DB_TABLE_NAME || "users";
 
 function toRow(obj) {
   if (!obj) return null;
@@ -55,7 +59,7 @@ async function getUser(userId) {
   const nextResetDefault = new Date(nowMs + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   const { data: row, error } = await supabase
-    .from("users")
+    .from(TABLE_NAME)
     .select("*")
     .eq("user_id", userId)
     .maybeSingle();
@@ -77,7 +81,7 @@ async function getUser(userId) {
       console.log("[DB] Monthly reset triggered for user:", userId);
 
       const { data: updated, error: updateErr } = await supabase
-        .from("users")
+        .from(TABLE_NAME)
         .update({
           used: 0,
           billing_cycle_start: newCycleStart,
@@ -96,7 +100,7 @@ async function getUser(userId) {
 
   // Create new user
   const { data: inserted, error: insertErr } = await supabase
-    .from("users")
+    .from(TABLE_NAME)
     .insert(
       toDb({
         userId,
@@ -113,7 +117,10 @@ async function getUser(userId) {
     .select()
     .single();
 
-  if (insertErr) throw insertErr;
+  if (insertErr) {
+    console.error("[DB] Insert user failed:", insertErr.message, insertErr.details);
+    throw insertErr;
+  }
   console.log("[DB] User created:", userId);
   return toRow(inserted);
 }
@@ -134,7 +141,7 @@ async function updateUserPlan(
   if (existingUser) {
     console.log("[DB] Updating existing user plan:", userId, "to:", plan);
     const { data, error } = await supabase
-      .from("users")
+      .from(TABLE_NAME)
       .update({
         plan,
         used: 0,
@@ -149,13 +156,16 @@ async function updateUserPlan(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error("[DB] Update plan failed:", error.message, error.details);
+      throw error;
+    }
     return toRow(data);
   }
 
   console.log("[DB] Inserting new user with plan:", userId, plan);
   const { data, error } = await supabase
-    .from("users")
+    .from(TABLE_NAME)
     .insert(
       toDb({
         userId,
@@ -172,7 +182,10 @@ async function updateUserPlan(
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error("[DB] Insert user with plan failed:", error.message, error.details);
+    throw error;
+  }
   return toRow(data);
 }
 
@@ -180,7 +193,7 @@ async function recordUsage(userId) {
   const now = new Date().toISOString();
 
   const { data: row, error: fetchErr } = await supabase
-    .from("users")
+    .from(TABLE_NAME)
     .select("used")
     .eq("user_id", userId)
     .single();
@@ -189,11 +202,14 @@ async function recordUsage(userId) {
 
   const newUsed = (row.used ?? 0) + 1;
   const { error: updateErr } = await supabase
-    .from("users")
+    .from(TABLE_NAME)
     .update({ used: newUsed, updated_at: now })
     .eq("user_id", userId);
 
-  if (updateErr) throw updateErr;
+  if (updateErr) {
+    console.error("[DB] recordUsage failed:", updateErr.message, updateErr.details);
+    throw updateErr;
+  }
   console.log("[DB] Usage incremented for user:", userId);
   return 1;
 }
