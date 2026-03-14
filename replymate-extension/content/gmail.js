@@ -96,6 +96,7 @@ const REPLYMATE_LANGUAGE_KEY = "replymateLanguage";
 const DEFAULT_TONE = "auto";
 const DEFAULT_LENGTH = "auto";
 const DEFAULT_LANGUAGE = "english";
+const FREE_PLAN_LIMIT = 25; // Matches backend PLAN_LIMIT_FREE
 
 // Language translations for Gmail UI
 const TRANSLATIONS = {
@@ -347,7 +348,10 @@ async function getUsageData() {
 function formatUsageDisplay(plan, remaining, limit, language = DEFAULT_LANGUAGE) {
   const planTranslations = TRANSLATIONS[language]?.planNames || TRANSLATIONS.english.planNames;
   const planName = planTranslations[plan] || planTranslations.free || "Free Plan";
-  // Gmail UI에서는 remaining replies 숨기고 플랜 이름만 표시
+  const repliesLeft = getTranslation("repliesLeft", language);
+  if (limit !== undefined && remaining !== undefined) {
+    return `${planName} · ${remaining} / ${limit} ${repliesLeft}`;
+  }
   return `${planName}`;
 }
 
@@ -374,6 +378,7 @@ async function updateUsageDisplayFromData(usageData) {
     if (container) {
       // Clear existing upgrade links
       container.innerHTML = "";
+      container.style.display = "flex";
 
       // 남은 리플라이가 0일 때만 업그레이드 박스 표시
       if (remaining <= 0) {
@@ -403,6 +408,7 @@ async function updateUsageDisplayFromData(usageData) {
         }
       } else {
         // 남은 리플라이가 있으면 업그레이드 박스 숨기기 (빈 상태로 유지)
+        container.style.display = "none";
         console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden (replies remaining)");
       }
     }
@@ -428,9 +434,9 @@ async function updateUsageDisplay(usageDisplay) {
     if (usageData) {
       await updateUsageDisplayFromData(usageData);
     } else {
-      // Fallback to empty display
+      // Not logged in: show free plan default (25/25) to encourage signup
       if (usageDisplay) {
-        usageDisplay.textContent = getTranslation("usageUnavailable", language);
+        usageDisplay.textContent = formatUsageDisplay("free", FREE_PLAN_LIMIT, FREE_PLAN_LIMIT, language);
       }
     }
 
@@ -438,7 +444,7 @@ async function updateUsageDisplay(usageDisplay) {
     console.error("[ReplyMate] Failed to update usage display:", error);
     const language = await getCurrentLanguage();
     if (usageDisplay) {
-      usageDisplay.textContent = getTranslation("usageUnavailable", language);
+      usageDisplay.textContent = formatUsageDisplay("free", FREE_PLAN_LIMIT, FREE_PLAN_LIMIT, language);
     }
   }
 }
@@ -598,7 +604,7 @@ async function showReplyMateMessage(message) {
     border: 1px solid #ddd;
     font-size: 14px;
     font-weight: 500;
-    z-index: 999999;
+    z-index: 2147483647;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     max-width: min(380px, calc(100vw - 24px));
     width: max-content;
@@ -1160,6 +1166,7 @@ async function createReplyMateButton() {
     if (!(await isLoggedIn())) {
       const language = await getCurrentLanguage();
       showReplyMateMessage(getTranslation("signInRequired", language));
+      chrome.runtime.sendMessage({ type: "OPEN_POPUP_FOR_LOGIN" }).catch(() => {});
       await setReplyMateButtonState(button, "error");
       setTimeout(async () => await setReplyMateButtonState(button, "idle"), 3000);
       return;
@@ -1314,17 +1321,18 @@ Length: ${finalLength}
         );
         usageDisplay.textContent = formattedText;
       } else {
-        usageDisplay.textContent = getTranslation("usageUnavailable", language);
+        // Not logged in: show free plan default (25/25) to encourage signup
+        usageDisplay.textContent = formatUsageDisplay("free", FREE_PLAN_LIMIT, FREE_PLAN_LIMIT, language);
       }
     } catch (error) {
       console.error("[ReplyMate] Failed to fetch initial usage:", error);
-      usageDisplay.textContent = getTranslation("usageUnavailable", language);
+      usageDisplay.textContent = formatUsageDisplay("free", FREE_PLAN_LIMIT, FREE_PLAN_LIMIT, language);
     }
   })();
   
   container.appendChild(usageDisplay);
   
-  // Add upgrade links with plan-based UI
+  // Add upgrade links with plan-based UI (only when logged in)
   const upgradeContainer = document.createElement("div");
   upgradeContainer.className = "replymate-upgrade-container";
   upgradeContainer.style.marginTop = "6px";
@@ -1335,9 +1343,13 @@ Length: ${finalLength}
   // Get current usage data to determine which upgrade options to show
   (async () => {
     try {
+      if (!(await isLoggedIn())) {
+        upgradeContainer.style.display = "none";
+        return;
+      }
       const usageData = await getUsageData();
       const currentPlan = usageData?.plan || 'free';
-      const remaining = usageData?.remaining || 0;
+      const remaining = usageData?.remaining ?? 0;
       const language = await getCurrentLanguage();
       
       console.log(`[ReplyMate] Gmail UI - Current plan from /usage: ${currentPlan}, remaining: ${remaining}`);
@@ -1377,18 +1389,7 @@ Length: ${finalLength}
       }
     } catch (error) {
       console.error("[ReplyMate] Failed to load usage for upgrade UI:", error);
-      // 남은 리플라이가 0일 때만 폴백 업그레이드 링크 표시
-      try {
-        const usageData = await getUsageData();
-        const remaining = usageData?.remaining || 0;
-        if (remaining <= 0) {
-          const fallbackLink = createUpgradeLink("pro", await getCurrentLanguage());
-          upgradeContainer.appendChild(fallbackLink);
-        }
-      } catch {
-        // 에러 발생 시에도 업그레이드 박스 숨기기
-        console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden due to error");
-      }
+      upgradeContainer.style.display = "none";
     }
   })();
   
@@ -2294,6 +2295,7 @@ Length: ${finalLength}
       if (!token) {
         const language = await getCurrentLanguage();
         showReplyMateMessage(getTranslation("signInRequired", language));
+        chrome.runtime.sendMessage({ type: "OPEN_POPUP_FOR_LOGIN" }).catch(() => {});
         await setReplyMateButtonState(button, "error");
         setTimeout(async () => await setReplyMateButtonState(button, "idle"), 3000);
         return;

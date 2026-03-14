@@ -64,6 +64,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(`[ReplyMate Background] Received Stripe checkout request for ${message.targetPlan} plan`);
     createStripeCheckout(message.targetPlan);
     sendResponse({ success: true });
+  } else if (message.type === "OPEN_POPUP_FOR_LOGIN") {
+    // Open popup so user can sign in (called when AI Reply clicked while not logged in)
+    chrome.action.openPopup().then(() => sendResponse({ success: true })).catch((err) => {
+      console.warn("[ReplyMate] Could not open popup:", err);
+      sendResponse({ success: false });
+    });
+    return true; // Keep channel open for async sendResponse
   }
 });
 
