@@ -696,9 +696,9 @@ function attachReplyMateButtonHoverStyles(button) {
 
 // Auto mode instructions for different languages
 const autoInstructions = {
-  english: "Auto-length mode: Determine reply length based on message context. Follow these rules:\n\nShort: 1–2 sentences (max ~25 words)\nMedium: 2–4 sentences (25–70 words)\nLong: 4–8 sentences (70–150 words)\n\nAuto-length determination:\n1. Acknowledgement messages (thanks, ok, yes, 알겠습니다, はい) → Short\n2. Message length: <20 chars → Short, 20-120 chars → Medium, >120 chars → Long\n3. Multiple questions (2+ ?) → Long\n4. Request words (please, could you, can you, would you, let me know, send, confirm) → at least Medium",
-  korean: "자동 길이 모드: 메시지 컨텍스트에 따라 답장 길이를 결정하세요. 다음 규칙을 따르세요:\n\nShort: 1–2문장 (최대 ~25단어)\nMedium: 2–4문장 (25-70단어)\nLong: 4–8문장 (70-150단어)\n\n자동 길이 결정:\n1. 확인 메시지 (감사, ok, 예, 알겠습니다, はい) → Short\n2. 메시지 길이: <20자 → Short, 20-120자 → Medium, >120자 → Long\n3. 여러 질문 (2+ ?) → Long\n4. 요청 단어 (제발, 할 수 있나요, 보내, 확인) → 최소 Medium",
-  japanese: "自動長モード：メッセージコンテキストに基づいて返信長を決定してください。以下のルールに従ってください：\n\nShort：1〜2文（最大〜25単語）\nMedium：2〜4文（25-70単語）\nLong：4〜8文（70-150単語）\n\n自動長決定：\n1. 確認メッセージ（ありがとう、OK、はい、알겠습니다、はい）→ Short\n2. メッセージ長：<20文字 → Short、20-120文字 → Medium、>120文字 → Long\n3. 複数の質問（2+ ?）→ Long\n4. 要求単語（お願い、できますか、送信、確認）→ 最低Medium"
+  english: "AUTO MODE: Choose the best length for this specific email. Be intentional—match reply length to what the message needs.\n\nRULES (apply in order):\n1. Acknowledgement only (thanks, ok, got it, yes, 알겠습니다, はい) → SHORT: 1–2 sentences, ~20 words max.\n2. Simple question or short request → MEDIUM: 3–5 sentences, 25–70 words.\n3. Multiple questions (2+), complex request, or long message (>120 chars) → LONG: 6–9 sentences, 70–150 words.\n4. Request words (please, could you, 부탁, お願い, send, confirm) with substantial message → at least MEDIUM.\n\nOutput must feel right for the situation—Short when brief fits; Long when the message deserves a fuller response.",
+  korean: "AUTO MODE: 이 이메일에 가장 적합한 길이를 선택하세요. 의도적으로—메시지가 필요로 하는 길이에 맞추세요.\n\n규칙 (순서대로):\n1. 확인만 (감사, ok, 알겠습니다, 예, はい) → SHORT: 1–2문장, 최대 ~20단어.\n2. 단순 질문 또는 짧은 요청 → MEDIUM: 3–5문장, 25–70단어.\n3. 여러 질문(2+), 복잡한 요청, 또는 긴 메시지(>120자) → LONG: 6–9문장, 70–150단어.\n4. 요청 표현(제발, 부탁, お願い, 보내, 확인) + 충분한 메시지 → 최소 MEDIUM.\n\n상황에 맞는 길이로—짧을 때는 짧게, 길어야 할 때는 충분히 길게.",
+  japanese: "AUTO MODE: このメールに最適な長さを選択してください。意図的に—メッセージが必要とする長さに合わせてください。\n\nルール（順に適用）:\n1. 確認のみ（ありがとう、OK、はい、알겠습니다）→ SHORT: 1〜2文、最大〜20語。\n2. 単純な質問または短い依頼 → MEDIUM: 3〜5文、25〜70語。\n3. 複数の質問（2+）、複雑な依頼、または長いメッセージ（>120文字）→ LONG: 6〜9文、70〜150語。\n4. 依頼表現（お願い、ください、부탁、送信、確認）+ 十分なメッセージ → 最低MEDIUM。\n\n状況に合った長さに—短い時は短く、長い時は十分に長く。"
 };
 
 // Convert UI language to OpenAI language code
@@ -723,7 +723,7 @@ function buildLengthInstruction(length, language = DEFAULT_LANGUAGE) {
   
   const userLanguageName = languageNames[language] || 'English';
   
-  // CRITICAL LANGUAGE RULE - Absolute priority to user setting
+  // CRITICAL LANGUAGE RULE - Absolute priority to user setting (equal strength for all languages)
   const criticalLanguageRule = `
 CRITICAL LANGUAGE RULE:
 Write entire reply strictly in ${userLanguageName}.
@@ -732,14 +732,14 @@ Even if email is written in another language, reply must remain fully in ${userL
 Never follow email language - only follow user popup language setting.
 `;
 
-  // Language-specific base instructions
+  // Language-specific base instructions — equal strength and specificity for EN/KO/JP
   const languageInstructions = {
-    en: "Write reply in English.",
-    ko: "Write reply in Korean (한국어).",
-    ja: "Write reply in Japanese (日本語)."
+    english: "Write reply in English. Use natural, idiomatic English—not stiff or translated-sounding.",
+    korean: "Write reply in Korean (한국어). Use natural, idiomatic Korean with appropriate 존댓말 (formal speech level). Not stiff or translated-sounding.",
+    japanese: "Write reply in Japanese (日本語). Use natural, idiomatic Japanese with appropriate 敬語 (keigo). Not stiff or translated-sounding."
   };
   
-  const languageInstruction = languageInstructions[language] || languageInstructions.en;
+  const languageInstruction = languageInstructions[language] || languageInstructions.english;
 
   // Auto mode - let backend determine length
   if (l === "auto") {
@@ -748,33 +748,32 @@ Never follow email language - only follow user popup language setting.
 
   if (l === "short") {
     const shortInstructions = {
-      english: "Strict Short mode: Write exactly 1–2 sentences (maximum ~25 words). Be concise and direct with minimal padding. Do not add extra small talk beyond what feels natural for this email.",
-      korean: "엄격한 Short 모드: 정확히 1-2문장 (최대 ~25단어)으로 작성하세요. 간결하고 직접적으로, 최소한의 말로 작성하고, 이 이메일에 자연스럽게 느껴지는 것 이상의 잡담은 추가하지 마세요.",
-      japanese: "厳格なShortモード：正確に1〜2文（最大〜25単語）で書いてください。簡潔で直接的に、最小限の言葉で、このメールに自然に感じられる以上の世間話を追加しないでください。"
+      english: "LENGTH: Short (very brief, minimal, fast). Write exactly 1–2 sentences, maximum ~20 words. Be extremely concise. No preamble, no extra pleasantries, no follow-up questions. Reply and stop. Short must feel noticeably shorter than a typical email.",
+      korean: "LENGTH: Short (매우 짧고 간결). 정확히 1–2문장, 최대 ~20단어. 극도로 간결하게. 서론·추가 인사·추가 질문 없음. 답하고 끝. Short는 일반 이메일보다 확실히 짧아야 함.",
+      japanese: "LENGTH: Short（非常に短く簡潔）. 正確に1〜2文、最大〜20語。極めて簡潔に。前置き・余計な挨拶・追加の質問なし。返事して終わり。Shortは通常のメールより明らかに短くすること。"
     };
-    return `${languageInstruction} ${shortInstructions[(language || 'english')] || shortInstructions.english}`;
+    return `${criticalLanguageRule}\n\n${languageInstruction} ${shortInstructions[(language || 'english')] || shortInstructions.english}`;
   }
 
   if (l === "long") {
     const longInstructions = {
-      english: "Strict Long mode: Write exactly 6–9 sentences (70–150 words). Expand with appreciation, context, clarifications, and a fuller closing. Keep it natural and avoid unnecessary fluff if the email itself is very short.",
-      korean: "엄격한 Long 모드: 정확히 6-9문장 (70-150단어)으로 작성하세요. 더 많은 감사 표현, 맥락, 명확화, 그리고 세련된 마무리로 확장하세요. 자연스럽게 유지하고 이메일 자체가 매우 짧을 경우 불필요한 미사여구를 피하세요.",
-      japanese: "厳格なLongモード：正確に6〜9文（70-150単語）で書いてください。より多くの感謝、文脈、明確化、そして洗練された結びで拡張してください。自然に保ち、メール自体が非常に短い場合は不要な飾り言葉を避けてください。"
+      english: "LENGTH: Long (fuller, complete, thoughtful). Write 6–9 sentences, 70–150 words. Include: brief context or acknowledgment, main response with detail, appreciation or next steps, and a polished closing. Long must feel noticeably more complete and considered than a typical quick reply.",
+      korean: "LENGTH: Long (충분하고 완전하며 신중함). 6–9문장, 70–150단어. 포함: 맥락/인지, 상세한 본론, 감사/다음 단계, 세련된 마무리. Long은 일반적인 짧은 답장보다 확실히 더 완전하고 신중해야 함.",
+      japanese: "LENGTH: Long（十分で丁寧な返信）. 6〜9文、70〜150語。含める：文脈・確認、詳細な本論、感謝・次のステップ、洗練された結び。Longは通常の短い返信より明らかに完全で丁寧であること。"
     };
-    return `${languageInstruction} ${longInstructions[(language || 'english')] || longInstructions.english}`;
+    return `${criticalLanguageRule}\n\n${languageInstruction} ${longInstructions[(language || 'english')] || longInstructions.english}`;
   }
 
   // medium / default
   const mediumInstructions = {
-    english: "Strict Medium mode: Write exactly 3–5 sentences (25–70 words). Aim for balanced detail and politeness without sounding verbose, adapting the length to what feels appropriate for this email.",
-    korean: "엄격한 Medium 모드: 정확히 3-5문장 (25-70단어)으로 작성하세요. 이 이메일에 적합하다고 느껴지는 길이에 맞춰 상세함과 예의를 조절하며, 장황하게 들리지 않도록 하세요.",
-    japanese: "厳格なMediumモード：正確に3〜5文（25-70単語）で書いてください。このメールに適切だと感じられる長さに合わせて、適度な詳細と丁寧さを目指し、冗長に聞こえないようにしてください。"
+    english: "LENGTH: Medium (balanced, natural). Write 3–5 sentences, 25–70 words. One brief acknowledgment, the main point, and a natural closing. Not too brief, not too long. Medium should feel like a normal, well-proportioned email reply.",
+    korean: "LENGTH: Medium (균형 잡힌 자연스러운 길이). 3–5문장, 25–70단어. 짧은 인지, 핵심 내용, 자연스러운 마무리. 너무 짧지도 길지도 않게. Medium은 일반적이고 균형 잡힌 이메일 답장처럼 느껴져야 함.",
+    japanese: "LENGTH: Medium（バランスの取れた自然な長さ）. 3〜5文、25〜70語。短い確認、本題、自然な結び。短すぎず長すぎず。Mediumは普通のバランスの取れた返信のように感じること。"
   };
-  return `${languageInstruction} ${mediumInstructions[(language || 'english')] || mediumInstructions.english}`;
+  return `${criticalLanguageRule}\n\n${languageInstruction} ${mediumInstructions[(language || 'english')] || mediumInstructions.english}`;
 }
 
-// Auto-detect optimal tone based on email context
-// ...
+// Auto-detect optimal tone based on email context — intentional, not generic
 function detectOptimalTone(threadContext, latestMessage) {
   const message = latestMessage.toLowerCase();
   const subject = (threadContext.subject || "").toLowerCase();
@@ -783,46 +782,63 @@ function detectOptimalTone(threadContext, latestMessage) {
   let intent = 'unknown';
   let complexity = 'simple';
   
-  // Intent detection keywords
   if (message.includes('thank') || message.includes('감사') || message.includes('ありがとう') || 
       message.includes('got it') || message.includes('알겠습니다') || 
-      message.includes('received') || message.includes('받았습니다')) {
+      message.includes('received') || message.includes('받았습니다') ||
+      message.includes('ok ') || message.includes('okay') || message.includes('네 ') || message.includes('예 ')) {
     intent = 'acknowledgement';
     complexity = 'simple';
   } else if (message.includes('meeting') || message.includes('회의') || message.includes('ミーティング') || 
-             message.includes('schedule') || message.includes('일정') || 
-             subject.includes('meeting') || subject.includes('회의')) {
+             message.includes('schedule') || message.includes('일정') || message.includes('予定') ||
+             subject.includes('meeting') || subject.includes('회의') || subject.includes('schedule')) {
     intent = 'scheduling';
     complexity = 'medium';
-  } else if (message.includes('?') || message.includes('어떻') || message.includes('何时') || 
-             message.includes('what time') || message.includes('몇 시') || 
-             message.includes('when') || message.includes('언제')) {
+  } else if (message.includes('?') && (message.includes('when') || message.includes('what time') || 
+             message.includes('몇 시') || message.includes('언제') || message.includes('いつ') || 
+             message.includes('how much') || message.includes('가격') || message.includes('価格') || 
+             message.includes('price') || message.includes('release') || message.includes('출시') || message.includes('発売'))) {
     intent = 'scheduling_question';
     complexity = 'medium';
+  } else if (message.includes('price') || message.includes('pricing') || message.includes('가격') || 
+             message.includes('비용') || message.includes('価格') || message.includes('料金') ||
+             message.includes('release') || message.includes('출시') || message.includes('発売') ||
+             message.includes('when will') || message.includes('언제')) {
+    intent = 'inquiry';
+    complexity = 'medium';
   } else if (message.includes('could you') || message.includes('부탁') || message.includes('ください') || 
-             message.includes('would you') || message.includes('해주시겠습니까')) {
+             message.includes('would you') || message.includes('해주시겠습니까') ||
+             message.includes('please') || message.includes('제발') || message.includes('お願い')) {
     intent = 'request';
     complexity = 'medium';
   } else if (message.includes('let me know') || message.includes('알려주세요') || 
              message.includes('inform') || message.includes('공유') || 
-             message.includes('update')) {
+             message.includes('update') || message.includes('업데이트') || message.includes('更新')) {
     intent = 'information';
     complexity = 'simple';
   } else if (message.includes('check') || message.includes('확인') || 
-             message.includes('status') || message.includes('상활') || 
-             message.includes('follow up') || message.includes('진행')) {
+             message.includes('status') || message.includes('상황') || message.includes('状況') ||
+             message.includes('follow up') || message.includes('진행') || message.includes('進捗')) {
     intent = 'follow_up';
     complexity = 'simple';
+  } else if (message.includes('sorry') || message.includes('apolog') || message.includes('죄송') || 
+             message.includes('미안') || message.includes('申し訳') || message.includes('すみません')) {
+    intent = 'apology';
+    complexity = 'medium';
+  } else if (message.includes('issue') || message.includes('problem') || message.includes('문제') || 
+             message.includes('問題') || message.includes('concern') ||
+             message.includes('disappoint') || message.includes('실망') || message.includes('残念')) {
+    intent = 'complaint';
+    complexity = 'complex';
   }
   
-  // Step 2: Detect message complexity
+  // Step 2: Detect complexity and formality cues
   const messageLength = latestMessage.length;
   const questionCount = (message.match(/\?/g) || []).length;
   const hasUrgency = message.includes('urgent') || message.includes('긴급') || 
-                     message.includes('asap') || message.includes('지금');
+                     message.includes('asap') || message.includes('지금') || message.includes('急');
   const hasWorkKeywords = message.includes('project') || message.includes('report') || 
                         message.includes('deadline') || message.includes('마감') || 
-                        message.includes('업무');
+                        message.includes('업무') || message.includes('業務') || message.includes('契約');
   
   if (messageLength > 120 || questionCount > 2) {
     complexity = 'complex';
@@ -830,25 +846,28 @@ function detectOptimalTone(threadContext, latestMessage) {
     complexity = 'medium';
   }
   
-  // Step 3: Auto tone selection
-  let chosenTone = 'auto'; // Default to auto
-  let toneReason = 'auto mode';
+  // Step 3: Auto tone selection — match tone to what the situation needs
+  let chosenTone = 'polite';
+  let toneReason = 'unclear context → polite (safe default)';
   
   if (intent === 'acknowledgement') {
     chosenTone = 'direct';
-    toneReason = 'acknowledgement → direct';
-  } else if (intent === 'scheduling' || intent === 'scheduling_question') {
+    toneReason = 'acknowledgement → direct (brief, efficient)';
+  } else if (intent === 'scheduling' || intent === 'scheduling_question' || intent === 'inquiry') {
     chosenTone = 'professional';
-    toneReason = 'scheduling → professional';
-  } else if (hasWorkKeywords) {
+    toneReason = 'scheduling/inquiry → professional (clear, composed)';
+  } else if (hasWorkKeywords || intent === 'follow_up') {
     chosenTone = 'professional';
     toneReason = 'work-related → professional';
+  } else if (intent === 'complaint' || intent === 'apology') {
+    chosenTone = 'polite';
+    toneReason = 'complaint/apology → polite (respectful, considerate)';
   } else if (intent === 'request' || complexity === 'complex') {
     chosenTone = 'polite';
-    toneReason = 'request/complex → polite';
-  } else if (intent === 'unknown') {
-    chosenTone = 'polite';
-    toneReason = 'unclear context → polite (safe default)';
+    toneReason = 'request/complex → polite (warm, courteous)';
+  } else if (intent === 'information' && complexity === 'simple') {
+    chosenTone = 'direct';
+    toneReason = 'simple info → direct (efficient)';
   }
   
   console.log("[ReplyMate Auto] Tone intent detected:", intent);
@@ -863,55 +882,71 @@ function detectOptimalTone(threadContext, latestMessage) {
   };
 }
 
-// Auto-detect optimal length based on email context
+// Auto-detect optimal length based on email context — intentional, not generic
 function detectOptimalLength(threadContext, latestMessage) {
   const message = latestMessage.toLowerCase();
   const subject = (threadContext.subject || "").toLowerCase();
+  const messageLength = latestMessage.length;
+  const questionCount = (message.match(/\?/g) || []).length;
   
   // Step 1: Detect message intent
   let intent = 'unknown';
   let complexity = 'simple';
   
-  // Intent detection keywords
   if (message.includes('thank') || message.includes('감사') || message.includes('ありがとう') || 
       message.includes('got it') || message.includes('알겠습니다') || 
-      message.includes('received') || message.includes('받았습니다')) {
+      message.includes('received') || message.includes('받았습니다') ||
+      message.includes('ok ') || message.includes('okay') || message.includes('네 ') || message.includes('예 ') ||
+      message.includes('좋아요') || message.includes('いいです')) {
     intent = 'acknowledgement';
     complexity = 'simple';
   } else if (message.includes('meeting') || message.includes('회의') || message.includes('ミーティング') || 
-             message.includes('schedule') || message.includes('일정') || 
-             subject.includes('meeting') || subject.includes('회의')) {
+             message.includes('schedule') || message.includes('일정') || message.includes('予定') ||
+             subject.includes('meeting') || subject.includes('회의') || subject.includes('schedule')) {
     intent = 'scheduling';
     complexity = 'medium';
-  } else if (message.includes('?') || message.includes('어떻') || message.includes('何时') || 
-             message.includes('what time') || message.includes('몇 시') || 
-             message.includes('when') || message.includes('언제')) {
+  } else if (message.includes('?') && (message.includes('when') || message.includes('what time') || 
+             message.includes('몇 시') || message.includes('언제') || message.includes('いつ') || 
+             message.includes('how much') || message.includes('가격') || message.includes('価格') || 
+             message.includes('price') || message.includes('release') || message.includes('출시') || message.includes('発売'))) {
     intent = 'scheduling_question';
     complexity = 'medium';
+  } else if (message.includes('price') || message.includes('pricing') || message.includes('가격') || 
+             message.includes('비용') || message.includes('価格') || message.includes('料金') ||
+             message.includes('release') || message.includes('출시') || message.includes('発売')) {
+    intent = 'inquiry';
+    complexity = 'medium';
   } else if (message.includes('could you') || message.includes('부탁') || message.includes('ください') || 
-             message.includes('would you') || message.includes('해주시겠습니까')) {
+             message.includes('would you') || message.includes('해주시겠습니까') ||
+             message.includes('please') || message.includes('제발') || message.includes('お願い')) {
     intent = 'request';
     complexity = 'medium';
   } else if (message.includes('let me know') || message.includes('알려주세요') || 
              message.includes('inform') || message.includes('공유') || 
-             message.includes('update')) {
+             message.includes('update') || message.includes('업데이트') || message.includes('更新')) {
     intent = 'information';
     complexity = 'simple';
   } else if (message.includes('check') || message.includes('확인') || 
-             message.includes('status') || message.includes('상활') || 
-             message.includes('follow up') || message.includes('진행')) {
+             message.includes('status') || message.includes('상황') || message.includes('状況') ||
+             message.includes('follow up') || message.includes('진행') || message.includes('進捗')) {
     intent = 'follow_up';
     complexity = 'simple';
+  } else if (message.includes('sorry') || message.includes('apolog') || message.includes('죄송') || 
+             message.includes('미안') || message.includes('申し訳') || message.includes('すみません')) {
+    intent = 'apology';
+    complexity = 'medium';
+  } else if (message.includes('issue') || message.includes('problem') || message.includes('문제') || 
+             message.includes('問題') || message.includes('concern') ||
+             message.includes('disappoint') || message.includes('실망') || message.includes('残念')) {
+    intent = 'complaint';
+    complexity = 'complex';
   }
   
-  // Step 2: Detect message complexity
-  const messageLength = latestMessage.length;
-  const questionCount = (message.match(/\?/g) || []).length;
+  // Step 2: Refine complexity
   const hasUrgency = message.includes('urgent') || message.includes('긴급') || 
-                     message.includes('asap') || message.includes('지금');
-  const hasWorkKeywords = message.includes('project') || message.includes('report') || 
-                        message.includes('deadline') || message.includes('마감') || 
-                        message.includes('업무');
+                     message.includes('asap') || message.includes('지금') || message.includes('急');
+  const hasRequest = message.includes('please') || message.includes('could you') || message.includes('부탁') || 
+                     message.includes('ください') || message.includes('해주세요');
   
   if (messageLength > 120 || questionCount > 2) {
     complexity = 'complex';
@@ -919,22 +954,34 @@ function detectOptimalLength(threadContext, latestMessage) {
     complexity = 'medium';
   }
   
-  // Step 3: Auto length selection
-  let chosenLength = 'auto'; // Default to auto
-  let lengthReason = 'auto mode';
+  // Step 3: Auto length selection — match length to what the message deserves
+  let chosenLength = 'medium';
+  let lengthReason = 'default → medium (balanced)';
   
   if (intent === 'acknowledgement') {
     chosenLength = 'short';
-    lengthReason = 'acknowledgement → short (1-2 sentences)';
+    lengthReason = 'acknowledgement → short (1-2 sentences, brief and done)';
   } else if (intent === 'scheduling' || intent === 'scheduling_question') {
     chosenLength = 'medium';
-    lengthReason = 'scheduling → medium (2-3 sentences)';
+    lengthReason = 'scheduling → medium (3-5 sentences, balanced)';
+  } else if (intent === 'inquiry' || intent === 'complaint') {
+    chosenLength = 'long';
+    lengthReason = 'inquiry/complaint → long (fuller, thoughtful response)';
+  } else if (intent === 'request' && messageLength > 60) {
+    chosenLength = 'long';
+    lengthReason = 'substantial request → long (deserves full reply)';
   } else if (intent === 'request' || questionCount > 0) {
     chosenLength = 'medium';
-    lengthReason = 'question/request → medium (2-3 sentences)';
+    lengthReason = 'request/question → medium (2-4 sentences)';
   } else if (complexity === 'complex' || messageLength > 120) {
     chosenLength = 'long';
-    lengthReason = 'complex/long message → long (4-6 sentences)';
+    lengthReason = 'complex/long message → long (6-9 sentences)';
+  } else if (intent === 'apology') {
+    chosenLength = 'medium';
+    lengthReason = 'apology → medium (appropriate depth)';
+  } else if (intent === 'information' && messageLength < 40) {
+    chosenLength = 'short';
+    lengthReason = 'simple info request → short';
   }
   
   console.log("[ReplyMate Auto] Length intent detected:", intent);

@@ -275,24 +275,25 @@ app.post("/generate-reply", async (req, res) => {
       console.log("[DEBUG] Auto length determined:", effectiveLengthInstruction);
     }
 
-    // Tone instructions
+    // Tone instructions — each tone must feel clearly distinct in output
     let toneInstructions = "";
     switch ((tone || "").toLowerCase()) {
       case "professional":
         toneInstructions =
-          "Write in a professional tone. Use formal language, proper business etiquette, and maintain a respectful, polished manner.";
+          "TONE: Professional. Use work-appropriate, clear, composed language. Sound like a competent colleague or business contact: structured, reliable, and focused. Avoid casual slang, excessive warmth, or emotional language. Be respectful and efficient without being cold.";
         break;
       case "friendly":
         toneInstructions =
-          "Write in a friendly, warm tone. Use conversational language, express warmth, and maintain a positive, approachable manner.";
+          "TONE: Friendly. Use warm, approachable, conversational language. Sound like a helpful acquaintance or supportive colleague: personable, positive, and easy to talk to. Include natural warmth and a human touch. Avoid stiff formality or robotic phrasing.";
         break;
       case "direct":
         toneInstructions =
-          "Write in a direct, concise tone. Be practical and efficient with minimal padding. Focus on clarity and brevity while remaining polite. Avoid unnecessary small talk and get straight to the point.";
+          "TONE: Direct. Be concise and efficient. Get to the point quickly—no unnecessary pleasantries, softeners, or padding. Skip small talk unless essential. Remain polite but avoid extra courtesy phrases. Prioritize clarity and brevity over warmth.";
         break;
       default:
+        // polite
         toneInstructions =
-          "Write in a polite, balanced tone. Be courteous and respectful while maintaining natural warmth and professionalism.";
+          "TONE: Polite. Use respectful, warm, courteous language. Balance formality with approachability. Include appropriate expressions of thanks, acknowledgment, or consideration. Be gracious without being overly formal or stiff.";
     }
 
     // Build email thread text
@@ -336,20 +337,16 @@ Email thread:
 ${emailThreadText}
 
 Task:
-Write a natural, human-like email reply from You to the latest message.
+Write an email reply from You to the latest message. Match the specified TONE and LENGTH exactly.
 
 Core Quality Rules:
-- Write replies that sound natural, human, and context-aware
-- Do not sound overly formal unless the thread clearly requires it
-- Do not over-explain or be unnecessarily verbose
-- Do not unnecessarily restate or paraphrase the other person's message
-- Prioritize replying directly to the latest message while staying consistent with thread context
-- If the latest message is short or simple, keep the reply short and natural
-- If the latest message is only an acknowledgement (thanks, okay, yes, 네, 알겠습니다, はい), write a brief acknowledgement reply instead of a full email
-- If the latest message does not ask a question or request action, avoid adding unnecessary follow-up lines
-- Avoid generic AI-style phrases like "Thank you for your prompt response" or "I appreciate your confirmation" unless truly appropriate
-- Avoid sounding like a customer service script or formal template generator
-- Keep the reply conversational and authentic, like how a real person would respond
+- Reply directly to what the latest message asks or states. Do not restate or paraphrase their message.
+- If the latest message is only an acknowledgement (thanks, okay, yes, 네, 알겠습니다, はい), write a brief acknowledgement—do not expand into a full email.
+- If the latest message does not ask a question or request action, do not add unnecessary follow-up questions or lines.
+- Avoid generic AI phrases ("Thank you for your prompt response", "I appreciate your confirmation") unless the context genuinely warrants them.
+- Avoid customer-service script tone or template-like phrasing. Sound like a real person writing to another real person.
+- Respect the LENGTH setting: Short = very brief; Medium = balanced; Long = fuller and more complete.
+- Respect the TONE setting: each tone (polite, professional, direct, friendly) must feel distinctly different in the output.
 
 Instructions:
 - Write only the email body.
@@ -361,16 +358,16 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
 
     const languageSystemPrompts = {
       english:
-        "CRITICAL: You generate replies ONLY in English. Never write in any other language. Regardless of the email's language, you must reply strictly in English.",
+        "CRITICAL: Generate replies ONLY in English. Never use any other language. Output must be natural, idiomatic English—not stiff or translated-sounding. Match the tone and length instructions exactly. Produce replies that native English speakers would find natural and well-written.",
       korean:
-        "CRITICAL: You generate replies ONLY in Korean (한국어). Never write in any other language. Regardless of the email's language, you must reply strictly in Korean.",
+        "CRITICAL: Generate replies ONLY in Korean (한국어). Never use any other language. Output must be natural, idiomatic Korean—appropriate register (존댓말), natural expressions, and culturally appropriate phrasing. Match the tone and length instructions exactly. Produce replies that native Korean speakers would find natural and well-written.",
       japanese:
-        "CRITICAL: You generate replies ONLY in Japanese (日本語). Never write in any other language. Regardless of the email's language, you must reply strictly in Japanese.",
+        "CRITICAL: Generate replies ONLY in Japanese (日本語). Never use any other language. Output must be natural, idiomatic Japanese—appropriate keigo (敬語), natural expressions, and culturally appropriate phrasing. Match the tone and length instructions exactly. Produce replies that native Japanese speakers would find natural and well-written.",
     };
 
     try {
       const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        model: process.env.OPENAI_MODEL || "gpt-5-mini",
         messages: [
           {
             role: "system",
