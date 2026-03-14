@@ -95,16 +95,21 @@
       if (typeof chrome === "undefined" || !chrome.identity) {
         return { error: "Chrome identity API not available" };
       }
-      const redirectUrl = chrome.identity.getRedirectURL();
-      const { data, error } = await client.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: redirectUrl },
-      });
-      if (error) return { error: error.message };
-      if (!data?.url) return { error: "No auth URL" };
+      const clientId = window.REPLYMATE_GOOGLE_CLIENT_ID;
+      if (!clientId) return { error: "Google OAuth client ID not configured" };
+      const redirectUri = chrome.identity.getRedirectURL();
+      const nonce = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const scope = encodeURIComponent("openid email profile");
+      const authUrl =
+        "https://accounts.google.com/o/oauth2/v2/auth?" +
+        "client_id=" + encodeURIComponent(clientId) +
+        "&redirect_uri=" + encodeURIComponent(redirectUri) +
+        "&response_type=id_token" +
+        "&scope=" + scope +
+        "&nonce=" + encodeURIComponent(nonce);
       return new Promise((resolve) => {
         chrome.identity.launchWebAuthFlow(
-          { url: data.url, interactive: true },
+          { url: authUrl, interactive: true },
           async (callbackUrl) => {
             if (chrome.runtime.lastError) {
               resolve({ error: chrome.runtime.lastError.message });
@@ -120,30 +125,42 @@
               return;
             }
             const params = new URLSearchParams(hash);
-            const accessToken = params.get("access_token");
-            const refreshToken = params.get("refresh_token");
-            const expiresIn = parseInt(params.get("expires_in") || "3600", 10);
-            if (!accessToken) {
-              resolve({ error: "No access token" });
+            const idToken = params.get("id_token");
+            const err = params.get("error");
+            if (err) {
+              resolve({ error: params.get("error_description") || err });
               return;
             }
-            const session = {
-              access_token: accessToken,
-              refresh_token: refreshToken || "",
-              expires_at: Math.floor(Date.now() / 1000) + expiresIn,
-            };
-            let user = { id: "", email: "" };
-            try {
-              const payload = JSON.parse(
-                atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
-              );
-              user.id = payload.sub || "";
-              user.email = payload.email || payload.user_metadata?.email || "";
-            } catch (_) {}
+            if (!idToken) {
+              resolve({ error: "No ID token in callback" });
+              return;
+            }
+            const { data, error } = await client.auth.signInWithIdToken({
+              provider: "google",
+              token: idToken,
+            });
+            if (error) {
+              resolve({ error: error.message });
+              return;
+            }
+            if (!data?.session) {
+              resolve({ error: "No session from Supabase" });
+              return;
+            }
+            const session = data.session;
+            const user = data.user;
             const storage = getStorage();
             if (storage) {
-              await storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-              await storage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+              const sessionData = {
+                access_token: session.access_token,
+                refresh_token: session.refresh_token || "",
+                expires_at: session.expires_at || Math.floor(Date.now() / 1000) + (session.expires_in || 3600),
+              };
+              await storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(sessionData));
+              await storage.setItem(AUTH_USER_KEY, JSON.stringify({
+                id: user?.id || "",
+                email: user?.email || "",
+              }));
             }
             resolve({ user });
           }

@@ -4,6 +4,11 @@
   "version": "1.0.1",
   "description": "AI-powered Gmail reply assistant",
 
+  "permissions": ["storage", "identity"],
+  "oauth2": {
+    "client_id": "REPLACE_WITH_GOOGLE_CLIENT_ID",
+    "scopes": ["openid", "email", "profile"]
+  },
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -11,7 +16,6 @@
     "128": "icons/icon128.png"
   },
 
-  "permissions": ["storage", "tabs", "identity"],
   "host_permissions": [
     "https://mail.google.com/*",
     "https://replymate-backend-bot8.onrender.com/*",

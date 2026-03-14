@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Build auth-config.js from environment variables.
- * Run: SUPABASE_URL=xxx SUPABASE_ANON_KEY=yyy node scripts/build-auth-config.js
+ * Build auth-config.js and patch manifest.json from environment variables.
+ * Run: SUPABASE_URL=xxx SUPABASE_ANON_KEY=yyy GOOGLE_CLIENT_ID=zzz node scripts/build-auth-config.js
  * Or: node scripts/build-auth-config.js (reads from replymate-backend/.env if present)
  */
 const fs = require("fs");
@@ -19,11 +19,15 @@ if (fs.existsSync(backendEnv)) {
     if (trimmed.startsWith("SUPABASE_ANON_KEY=") && !process.env.SUPABASE_ANON_KEY) {
       process.env.SUPABASE_ANON_KEY = trimmed.slice("SUPABASE_ANON_KEY=".length).trim();
     }
+    if (trimmed.startsWith("GOOGLE_CLIENT_ID=") && !process.env.GOOGLE_CLIENT_ID) {
+      process.env.GOOGLE_CLIENT_ID = trimmed.slice("GOOGLE_CLIENT_ID=".length).trim();
+    }
   });
 }
 
 const url = process.env.SUPABASE_URL || "";
 const key = process.env.SUPABASE_ANON_KEY || "";
+const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
 
 const content = `/**
  * Supabase Auth configuration (generated from env).
@@ -33,6 +37,7 @@ const content = `/**
   const g = typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : {});
   g.REPLYMATE_SUPABASE_URL = ${JSON.stringify(url)};
   g.REPLYMATE_SUPABASE_ANON_KEY = ${JSON.stringify(key)};
+  g.REPLYMATE_GOOGLE_CLIENT_ID = ${JSON.stringify(googleClientId)};
 })();
 `;
 
@@ -40,3 +45,14 @@ const outPath = path.join(__dirname, "../replymate-extension/lib/auth-config.js"
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
 fs.writeFileSync(outPath, content);
 console.log("auth-config.js written to", outPath);
+
+// Patch manifest.json with Google OAuth client_id
+const manifestPath = path.join(__dirname, "../replymate-extension/manifest.json");
+if (fs.existsSync(manifestPath) && googleClientId) {
+  let manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  if (manifest.oauth2) {
+    manifest.oauth2.client_id = googleClientId;
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    console.log("manifest.json oauth2.client_id updated");
+  }
+}
