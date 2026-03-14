@@ -2399,8 +2399,7 @@ Length: ${finalLength}
       const gap = 10;
       let left = leftmostRect.left - rowRect.left - buttonRect.width - gap;
       let top =
-        leftmostRect.top -
-        (leftmostRect.height - buttonRect.height) / 2;
+        leftmostRect.top - rowRect.top + (leftmostRect.height - buttonRect.height) / 2;
       
       left = Math.max(8, left);
       top = Math.max(4, top);
