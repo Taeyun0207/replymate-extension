@@ -379,7 +379,7 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
             content: prompt,
           },
         ],
-        max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 300,
+        max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 1024,
       });
 
       const reply = completion.choices?.[0]?.message?.content?.trim();
