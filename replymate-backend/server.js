@@ -379,7 +379,6 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
             content: prompt,
           },
         ],
-        temperature: 0.7,
         max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 300,
       });
 
