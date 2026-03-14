@@ -14,8 +14,8 @@ const openai = new OpenAI({
 
 // Map plan names to Stripe price IDs
 const PLAN_PRICE_IDS = {
-  pro: process.env.STRIPE_PRO_PRICE_ID,
-  pro_plus: process.env.STRIPE_PRO_PLUS_PRICE_ID,
+  pro: process.env.STRIPE_PRO_PRICE,
+  pro_plus: process.env.STRIPE_PRO_PLUS_PRICE,
 };
 
 // ─────────────────────────────────────────────
