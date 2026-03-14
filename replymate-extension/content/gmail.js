@@ -108,6 +108,7 @@ const TRANSLATIONS = {
     usageUnavailable: "Usage unavailable",
     monthlyLimitReached: "⚠️You've reached your monthly ReplyMate limit. Upgrade to generate more replies.",
     replyLimitReached: "ReplyMate limit reached. Upgrade to generate more replies.",
+    signInRequired: "Please sign in with Google to use ReplyMate.",
     planNames: {
       free: "Free Plan",
       pro: "Pro",
@@ -128,6 +129,7 @@ const TRANSLATIONS = {
     usageUnavailable: "사용량을 사용할 수 없음",
     monthlyLimitReached: "⚠️월간 ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
     replyLimitReached: "ReplyMate 한도에 도달했습니다. 더 많은 답장을 생성하려면 업그레이드하세요.",
+    signInRequired: "ReplyMate를 사용하려면 Google로 로그인해 주세요.",
     planNames: {
       free: "무료 플랜",
       pro: "Pro",
@@ -148,6 +150,7 @@ const TRANSLATIONS = {
     usageUnavailable: "現在この機能は利用できません",
     monthlyLimitReached: "⚠️ 今月の返信回数の上限に達しました。続けて利用するには、プランをアップグレードしてください。",
     replyLimitReached: "返信回数の上限に達しました。続けて利用するには、プランをアップグレードしてください。",
+    signInRequired: "ReplyMateをご利用になるには、Googleでサインインしてください。",
     planNames: {
       free: "無料プラン",
       pro: "Pro",
@@ -234,46 +237,20 @@ function loadReplyMateSettings() {
   });
 }
 
-// Get or create a persistent ReplyMate user ID
-function getReplyMateUserId() {
-  return new Promise((resolve) => {
-    try {
-      // chrome 객체와 chrome.storage가 존재하는지 먼저 확인
-      if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
-        console.warn("[ReplyMate] Chrome storage API not available, using fallback ID");
-        const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-        resolve(fallbackId);
-        return;
-      }
-      
-      chrome.storage.local.get(["replymate_user_id"], (result) => {
-        // Check for extension context invalidation
-        if (chrome.runtime.lastError) {
-          console.warn("[ReplyMate] Chrome storage error:", chrome.runtime.lastError.message);
-          const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-          resolve(fallbackId);
-          return;
-        }
-        
-        if (result.replymate_user_id) {
-          resolve(result.replymate_user_id);
-        } else {
-          const newUserId = crypto.randomUUID();
-          chrome.storage.local.set({ replymate_user_id: newUserId }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn("[ReplyMate] Failed to save user ID:", chrome.runtime.lastError.message);
-            }
-            resolve(newUserId);
-          });
-        }
-      });
-    } catch (error) {
-      // Fallback to a simple ID if crypto.randomUUID() or storage fails
-      console.warn("[ReplyMate] User ID generation error, using fallback:", error);
-      const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-      resolve(fallbackId);
-    }
-  });
+// Check if user is signed in (uses auth-shared, no anonymous fallback)
+async function isLoggedIn() {
+  if (typeof ReplyMateAuthShared !== "undefined") {
+    return await ReplyMateAuthShared.isLoggedIn();
+  }
+  return false;
+}
+
+// Get access token for API calls (requires login)
+async function getAccessToken() {
+  if (typeof ReplyMateAuthShared !== "undefined") {
+    return await ReplyMateAuthShared.getAccessToken();
+  }
+  return null;
 }
 
 // Shared usage cache and sync system
@@ -327,27 +304,26 @@ function setCachedUsage(usageData) {
   }
 }
 
-// Shared function to fetch usage from backend
+// Shared function to fetch usage from backend (requires auth)
 async function fetchUsageFromBackend() {
   try {
-    const userId = await getReplyMateUserId();
-    
+    const token = await getAccessToken();
+    if (!token) return null;
+
     const response = await fetch(`${REPLYMATE_CONFIG.backend.baseUrl}${REPLYMATE_CONFIG.backend.endpoints.usage}`, {
       method: "GET",
       headers: {
-        "X-User-ID": userId
-      }
+        "Authorization": `Bearer ${token}`,
+      },
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch usage');
+      if (response.status === 401) return null;
+      throw new Error("Failed to fetch usage");
     }
 
     const data = await response.json();
-    
-    // Cache the fresh data
     setCachedUsage(data);
-    
     return data;
   } catch (error) {
     console.error("[ReplyMate] Failed to fetch usage:", error);
@@ -467,11 +443,12 @@ async function updateUsageDisplay(usageDisplay) {
   }
 }
 
-// Call the ReplyMate backend to generate an AI reply.
+// Call the ReplyMate backend to generate an AI reply (requires auth).
 async function generateAIReply(payload) {
   try {
-    const userId = await getReplyMateUserId();
-    
+    const token = await getAccessToken();
+    if (!token) return "";
+
     // Log payload shape without sensitive content
     const payloadShape = {
       hasSubject: !!payload.subject,
@@ -505,7 +482,7 @@ async function generateAIReply(payload) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-ID": userId
+        "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify(payload || {}),
     })
@@ -533,6 +510,12 @@ async function generateAIReply(payload) {
         }
 
         console.log("[ReplyMate] Parsed error data:", errorData);
+
+        if (response.status === 401) {
+          const language = await getCurrentLanguage();
+          showReplyMateMessage(getTranslation("signInRequired", language));
+          return "";
+        }
 
         if (response.status === 403 || errorData.error === "usage_limit_exceeded") {
           console.warn("[ReplyMate] Monthly limit reached");
@@ -1170,6 +1153,15 @@ async function createReplyMateButton() {
     // Duplicate click prevention: ignore if already loading.
     if (button.dataset.replymateState === "loading") {
       console.log("[ReplyMate DEBUG] Compose button click ignored (already loading)");
+      return;
+    }
+
+    // Login required for AI reply
+    if (!(await isLoggedIn())) {
+      const language = await getCurrentLanguage();
+      showReplyMateMessage(getTranslation("signInRequired", language));
+      await setReplyMateButtonState(button, "error");
+      setTimeout(async () => await setReplyMateButtonState(button, "idle"), 3000);
       return;
     }
 
@@ -2297,17 +2289,32 @@ Length: ${finalLength}
         return;
       }
 
+      // Login required for AI reply
+      const token = await getAccessToken();
+      if (!token) {
+        const language = await getCurrentLanguage();
+        showReplyMateMessage(getTranslation("signInRequired", language));
+        await setReplyMateButtonState(button, "error");
+        setTimeout(async () => await setReplyMateButtonState(button, "idle"), 3000);
+        return;
+      }
+
       // Check usage before proceeding
       try {
-        const userId = await getReplyMateUserId();
-        
         const usageResponse = await fetch(`${REPLYMATE_CONFIG.backend.baseUrl}${REPLYMATE_CONFIG.backend.endpoints.usage}`, {
           method: "GET",
           headers: {
-            "X-User-ID": userId
-          }
+            "Authorization": `Bearer ${token}`,
+          },
         });
 
+        if (usageResponse.status === 401) {
+          const language = await getCurrentLanguage();
+          showReplyMateMessage(getTranslation("signInRequired", language));
+          await setReplyMateButtonState(button, "error");
+          setTimeout(async () => await setReplyMateButtonState(button, "idle"), 3000);
+          return;
+        }
         if (usageResponse.ok) {
           const usage = await usageResponse.json();
           if (usage.remaining <= 0) {
@@ -2320,7 +2327,7 @@ Length: ${finalLength}
         }
       } catch (error) {
         console.error("[ReplyMate] Failed to check usage:", error);
-        // Continue anyway on error
+        // Continue anyway on error (e.g. network)
       }
 
       runHoverGenerateReplyWorkflow(row, button);

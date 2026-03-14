@@ -2,9 +2,34 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const OpenAI = require("openai");
+const { createClient } = require("@supabase/supabase-js");
 const { PLAN_LIMITS } = require("./src/config/plans");
 const { getUser, updateUserPlan, recordUsage } = require("./src/database");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+const supabase = createClient(
+  process.env.SUPABASE_URL || "",
+  process.env.SUPABASE_ANON_KEY || ""
+);
+
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized. Please sign in with Google." });
+  }
+  const token = authHeader.slice(7);
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return res.status(401).json({ error: "Unauthorized. Invalid or expired token." });
+    }
+    req.userId = user.id;
+    next();
+  } catch (err) {
+    console.error("Auth verification error:", err);
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -189,10 +214,10 @@ app.get("/", (req, res) => {
   res.send("ReplyMate backend is running.");
 });
 
-// Get current usage
-app.get("/usage", async (req, res) => {
+// Get current usage (requires auth)
+app.get("/usage", requireAuth, async (req, res) => {
   try {
-    const userId = req.headers["x-user-id"] || "default_user";
+    const userId = req.userId;
     const usage = await checkUsageLimit(userId);
     res.json(usage);
   } catch (error) {
@@ -201,9 +226,9 @@ app.get("/usage", async (req, res) => {
   }
 });
 
-app.post("/generate-reply", async (req, res) => {
+app.post("/generate-reply", requireAuth, async (req, res) => {
   try {
-    const userId = req.headers["x-user-id"] || "default_user";
+    const userId = req.userId;
 
     console.log("[DEBUG] userId:", userId);
 
@@ -416,11 +441,11 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
   }
 });
 
-// Create Stripe checkout session
-app.post("/billing/create-checkout-session", async (req, res) => {
+// Create Stripe checkout session (requires auth)
+app.post("/billing/create-checkout-session", requireAuth, async (req, res) => {
   try {
     const { targetPlan } = req.body;
-    const userId = req.headers["x-user-id"] || "default_user";
+    const userId = req.userId;
     const userEmail = req.headers["x-user-email"] || null;
 
     if (!targetPlan || !["pro", "pro_plus"].includes(targetPlan)) {
@@ -459,10 +484,10 @@ app.post("/billing/create-checkout-session", async (req, res) => {
   }
 });
 
-// Cancel subscription at period end
-app.post("/billing/cancel-subscription", async (req, res) => {
+// Cancel subscription at period end (requires auth)
+app.post("/billing/cancel-subscription", requireAuth, async (req, res) => {
   try {
-    const userId = req.headers["x-user-id"] || "default_user";
+    const userId = req.userId;
 
     const user = await getUser(userId);
     if (!user) {

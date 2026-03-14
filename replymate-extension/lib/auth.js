@@ -1,0 +1,190 @@
+/**
+ * ReplyMate Supabase Auth - Google sign-in for Chrome extension.
+ * Requires: lib/supabase.min.js, lib/auth-config.js loaded before this script.
+ */
+(function() {
+  const AUTH_STORAGE_KEY = "replymate_supabase_session";
+  const AUTH_USER_KEY = "replymate_auth_user";
+
+  function getSupabaseClient() {
+    const url = window.REPLYMATE_SUPABASE_URL;
+    const key = window.REPLYMATE_SUPABASE_ANON_KEY;
+    if (!url || !key || typeof supabase === "undefined") return null;
+    return supabase.createClient(url, key);
+  }
+
+  function getStorage() {
+    if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+      return {
+        getItem: (k) =>
+          new Promise((resolve) => {
+            chrome.storage.local.get([k], (r) => resolve(r[k] || null));
+          }),
+        setItem: (k, v) =>
+          new Promise((resolve) => {
+            chrome.storage.local.set({ [k]: v }, resolve);
+          }),
+        removeItem: (k) =>
+          new Promise((resolve) => {
+            chrome.storage.local.remove([k], resolve);
+          }),
+      };
+    }
+    return null;
+  }
+
+  window.ReplyMateAuth = {
+    isConfigured() {
+      const url = window.REPLYMATE_SUPABASE_URL;
+      const key = window.REPLYMATE_SUPABASE_ANON_KEY;
+      return !!(url && key);
+    },
+
+    async getSession() {
+      const storage = getStorage();
+      if (!storage) return null;
+      const raw = await storage.getItem(AUTH_STORAGE_KEY);
+      if (!raw) return null;
+      try {
+        const session = JSON.parse(raw);
+        if (session && session.access_token && session.expires_at) {
+          const expiresAt = session.expires_at * 1000;
+          if (Date.now() < expiresAt - 60000) return session;
+        }
+      } catch (_) {}
+      return null;
+    },
+
+    async getUser() {
+      const storage = getStorage();
+      if (!storage) return null;
+      const raw = await storage.getItem(AUTH_USER_KEY);
+      if (raw) {
+        try {
+          return JSON.parse(raw);
+        } catch (_) {}
+      }
+      return null;
+    },
+
+    async isSignedIn() {
+      const session = await this.getSession();
+      return !!session;
+    },
+
+    async getUserId() {
+      const user = await this.getUser();
+      return user ? user.id : null;
+    },
+
+    async getEmail() {
+      const user = await this.getUser();
+      return user ? user.email || "" : "";
+    },
+
+    async getAccessToken() {
+      let session = await this.getSession();
+      if (session) return session.access_token;
+      session = await this.refreshSessionIfNeeded();
+      return session ? session.access_token : null;
+    },
+
+    async signInWithGoogle() {
+      const client = getSupabaseClient();
+      if (!client) return { error: "Supabase not configured" };
+      if (typeof chrome === "undefined" || !chrome.identity) {
+        return { error: "Chrome identity API not available" };
+      }
+      const redirectUrl = chrome.identity.getRedirectURL();
+      const { data, error } = await client.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: redirectUrl },
+      });
+      if (error) return { error: error.message };
+      if (!data?.url) return { error: "No auth URL" };
+      return new Promise((resolve) => {
+        chrome.identity.launchWebAuthFlow(
+          { url: data.url, interactive: true },
+          async (callbackUrl) => {
+            if (chrome.runtime.lastError) {
+              resolve({ error: chrome.runtime.lastError.message });
+              return;
+            }
+            if (!callbackUrl) {
+              resolve({ error: "Auth cancelled" });
+              return;
+            }
+            const hash = callbackUrl.split("#")[1];
+            if (!hash) {
+              resolve({ error: "No tokens in callback" });
+              return;
+            }
+            const params = new URLSearchParams(hash);
+            const accessToken = params.get("access_token");
+            const refreshToken = params.get("refresh_token");
+            const expiresIn = parseInt(params.get("expires_in") || "3600", 10);
+            if (!accessToken) {
+              resolve({ error: "No access token" });
+              return;
+            }
+            const session = {
+              access_token: accessToken,
+              refresh_token: refreshToken || "",
+              expires_at: Math.floor(Date.now() / 1000) + expiresIn,
+            };
+            let user = { id: "", email: "" };
+            try {
+              const payload = JSON.parse(
+                atob(accessToken.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+              );
+              user.id = payload.sub || "";
+              user.email = payload.email || payload.user_metadata?.email || "";
+            } catch (_) {}
+            const storage = getStorage();
+            if (storage) {
+              await storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+              await storage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+            }
+            resolve({ user });
+          }
+        );
+      });
+    },
+
+    async signOut() {
+      const storage = getStorage();
+      if (storage) {
+        await storage.removeItem(AUTH_STORAGE_KEY);
+        await storage.removeItem(AUTH_USER_KEY);
+      }
+    },
+
+    async refreshSessionIfNeeded() {
+      const session = await this.getSession();
+      if (!session || !session.refresh_token) return null;
+      const client = getSupabaseClient();
+      if (!client) return null;
+      const { data, error } = await client.auth.refreshSession({
+        refresh_token: session.refresh_token,
+      });
+      if (error || !data?.session) return null;
+      const storage = getStorage();
+      if (storage) {
+        await storage.setItem(
+          AUTH_STORAGE_KEY,
+          JSON.stringify(data.session)
+        );
+        if (data.user) {
+          await storage.setItem(
+            AUTH_USER_KEY,
+            JSON.stringify({
+              id: data.user.id,
+              email: data.user.email || "",
+            })
+          );
+        }
+      }
+      return data.session;
+    },
+  };
+})();

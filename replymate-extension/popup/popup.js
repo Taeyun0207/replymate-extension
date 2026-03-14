@@ -36,7 +36,11 @@ const TRANSLATIONS = {
     cancelSubscription: "Cancel Subscription",
     cancelConfirmMessage: "Are you sure you want to cancel your subscription? You will still be able to use ReplyMate until the end of your current billing period.",
     cancelSuccessMessage: "Subscription cancellation scheduled. You can continue using ReplyMate for {days} more days.",
-    cancelError: "Failed to cancel subscription."
+    cancelError: "Failed to cancel subscription.",
+    signInWithGoogle: "Sign in with Google",
+    signedInAs: "Signed in as",
+    signOut: "Sign out",
+    signInRequired: "Please sign in with Google to use ReplyMate."
   },
   korean: {
     settings: "ReplyMate 설정",
@@ -63,7 +67,11 @@ const TRANSLATIONS = {
     cancelSubscription: "구독 취소",
     cancelConfirmMessage: "구독을 취소하시겠습니까? 현재 결제 기간이 끝날 때까지 ReplyMate를 계속 사용할 수 있습니다.",
     cancelSuccessMessage: "구독 취소가 예약되었습니다. ReplyMate를 {days}일 더 사용할 수 있습니다.",
-    cancelError: "구독 취소에 실패했습니다."
+    cancelError: "구독 취소에 실패했습니다.",
+    signInWithGoogle: "Google로 로그인",
+    signedInAs: "로그인됨",
+    signOut: "로그아웃",
+    signInRequired: "ReplyMate를 사용하려면 Google로 로그인해 주세요."
   },
   japanese: {
     settings: "設定",
@@ -90,7 +98,11 @@ const TRANSLATIONS = {
     cancelSubscription: "サブスクリプションをキャンセル",
     cancelConfirmMessage: "サブスクリプションをキャンセルしますか？現在の請求期間が終わるまでReplyMateをご利用いただけます。",
     cancelSuccessMessage: "サブスクリプションのキャンセルが予約されました。あと{days}日間ReplyMateをご利用いただけます。",
-    cancelError: "キャンセルに失敗しました。"
+    cancelError: "キャンセルに失敗しました。",
+    signInWithGoogle: "Googleでサインイン",
+    signedInAs: "サインイン中",
+    signOut: "サインアウト",
+    signInRequired: "ReplyMateをご利用になるには、Googleでサインインしてください。"
   }
 };
 
@@ -100,26 +112,15 @@ function getTranslation(key, language = DEFAULT_LANGUAGE) {
   return lang[key] || TRANSLATIONS.english[key] || key;
 }
 
-// Get or create a persistent ReplyMate user ID (reused from gmail.js)
-function getReplyMateUserId() {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.local.get(["replymate_user_id"], (result) => {
-        if (result.replymate_user_id) {
-          resolve(result.replymate_user_id);
-        } else {
-          const newUserId = crypto.randomUUID();
-          chrome.storage.local.set({ replymate_user_id: newUserId }, () => {
-            resolve(newUserId);
-          });
-        }
-      });
-    } catch (error) {
-      // Fallback to a simple ID if crypto.randomUUID() or storage fails
-      const fallbackId = crypto.getRandomValues(new Uint32Array(4)).join("-");
-      resolve(fallbackId);
-    }
-  });
+// Get access token for API calls (requires login, no anonymous fallback)
+async function getAccessToken() {
+  if (typeof ReplyMateAuth !== "undefined") {
+    return await ReplyMateAuth.getAccessToken();
+  }
+  if (typeof ReplyMateAuthShared !== "undefined") {
+    return await ReplyMateAuthShared.getAccessToken();
+  }
+  return null;
 }
 
 // Get cached usage data if still valid
@@ -156,27 +157,26 @@ function setCachedUsage(usageData) {
   }
 }
 
-// Shared function to fetch usage from backend
+// Shared function to fetch usage from backend (requires auth)
 async function fetchUsageFromBackend() {
   try {
-    const userId = await getReplyMateUserId();
-    
+    const token = await getAccessToken();
+    if (!token) return null;
+
     const response = await fetch("https://replymate-backend-bot8.onrender.com/usage", {
       method: "GET",
       headers: {
-        "X-User-ID": userId
-      }
+        "Authorization": `Bearer ${token}`,
+      },
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch usage');
+      if (response.status === 401) return null;
+      throw new Error("Failed to fetch usage");
     }
 
     const data = await response.json();
-    
-    // Cache the fresh data
     setCachedUsage(data);
-    
     return data;
   } catch (error) {
     console.error("[ReplyMate] Failed to fetch usage:", error);
@@ -421,6 +421,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// Sync Supabase config to storage for content script and background
+function syncAuthConfigToStorage() {
+  if (typeof ReplyMateAuth !== "undefined" && ReplyMateAuth.isConfigured() &&
+      typeof window.REPLYMATE_SUPABASE_URL !== "undefined" && window.REPLYMATE_SUPABASE_URL &&
+      typeof window.REPLYMATE_SUPABASE_ANON_KEY !== "undefined" && window.REPLYMATE_SUPABASE_ANON_KEY) {
+    chrome.storage.local.set({
+      replymate_supabase_url: window.REPLYMATE_SUPABASE_URL,
+      replymate_supabase_anon_key: window.REPLYMATE_SUPABASE_ANON_KEY,
+    });
+  }
+}
+
+// Update login UI based on auth state
+async function updateLoginUI(language = DEFAULT_LANGUAGE) {
+  syncAuthConfigToStorage();
+  const loginSection = document.getElementById("loginSection");
+  const notSignedIn = document.getElementById("loginNotSignedIn");
+  const signedIn = document.getElementById("loginSignedIn");
+  const signedInEmail = document.getElementById("signedInEmail");
+  const signInBtn = document.getElementById("signInButton");
+  const signOutBtn = document.getElementById("signOutButton");
+  const planUsageEl = document.querySelector(".plan-usage");
+  const upgradeBox = document.querySelector(".upgrade-box");
+  const cancelSection = document.getElementById("cancelSection");
+
+  if (!loginSection || !notSignedIn || !signedIn) return;
+
+  if (typeof ReplyMateAuth === "undefined" || !ReplyMateAuth.isConfigured()) {
+    loginSection.style.display = "none";
+    return;
+  }
+  loginSection.style.display = "block";
+
+  const isSignedIn = await ReplyMateAuth.isSignedIn();
+  const email = await ReplyMateAuth.getEmail();
+
+  if (isSignedIn) {
+    notSignedIn.style.display = "none";
+    signedIn.style.display = "block";
+    if (signedInEmail) signedInEmail.textContent = getTranslation("signedInAs", language) + " " + (email || "");
+    if (signOutBtn) signOutBtn.textContent = getTranslation("signOut", language);
+    if (planUsageEl) planUsageEl.style.display = "";
+    if (upgradeBox) upgradeBox.style.display = "";
+    if (cancelSection) cancelSection.style.display = "";
+  } else {
+    notSignedIn.style.display = "block";
+    signedIn.style.display = "none";
+    if (signInBtn) signInBtn.textContent = getTranslation("signInWithGoogle", language);
+    if (planUsageEl) planUsageEl.style.display = "none";
+    if (upgradeBox) upgradeBox.style.display = "none";
+    if (cancelSection) cancelSection.style.display = "none";
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const toneSelect = document.getElementById("toneSelect");
   const lengthSelect = document.getElementById("lengthSelect");
@@ -433,6 +487,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!toneSelect || !lengthSelect || !userNameInput || !languageSelect || !saveButton || !statusMessage) {
     return;
+  }
+
+  // Login: Sign in with Google
+  const signInButton = document.getElementById("signInButton");
+  if (signInButton && typeof ReplyMateAuth !== "undefined") {
+    signInButton.addEventListener("click", async () => {
+      signInButton.disabled = true;
+      signInButton.textContent = "Signing in...";
+      const result = await ReplyMateAuth.signInWithGoogle();
+      const language = languageSelect?.value || DEFAULT_LANGUAGE;
+      if (result.error) {
+        signInButton.disabled = false;
+        signInButton.textContent = getTranslation("signInWithGoogle", language);
+        if (result.error !== "Auth cancelled") alert(result.error);
+      } else {
+        await updateLoginUI(language);
+        setCachedUsage(null);
+        loadUsageData(language);
+        syncAuthConfigToStorage();
+      }
+    });
+  }
+
+  // Login: Sign out
+  const signOutButton = document.getElementById("signOutButton");
+  if (signOutButton && typeof ReplyMateAuth !== "undefined") {
+    signOutButton.addEventListener("click", async () => {
+      await ReplyMateAuth.signOut();
+      const language = languageSelect?.value || DEFAULT_LANGUAGE;
+      await updateLoginUI(language);
+      setCachedUsage(null);
+      loadUsageData(language);
+    });
   }
 
   // Add click handler for Pro upgrade link
@@ -470,14 +557,18 @@ document.addEventListener("DOMContentLoaded", () => {
   if (cancelSubscriptionLink) {
     cancelSubscriptionLink.addEventListener("click", async (e) => {
       e.preventDefault();
+      const token = await getAccessToken();
+      if (!token) {
+        alert(getTranslation("signInRequired", languageSelect?.value || DEFAULT_LANGUAGE));
+        return;
+      }
       const language = languageSelect?.value || DEFAULT_LANGUAGE;
       const confirmMsg = getTranslation("cancelConfirmMessage", language);
       if (!confirm(confirmMsg)) return;
       try {
-        const userId = await getReplyMateUserId();
         const response = await fetch("https://replymate-backend-bot8.onrender.com/billing/cancel-subscription", {
           method: "POST",
-          headers: { "X-User-ID": userId },
+          headers: { "Authorization": `Bearer ${token}` },
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Failed");
@@ -493,7 +584,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
 // Load saved values (tone, length, user name, and language) when the popup opens.
-  chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY], (result) => {
+  chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY], async (result) => {
     const tone = result[TONE_KEY] || DEFAULT_TONE;
     const length = result[LENGTH_KEY] || DEFAULT_LENGTH;
     const userName = result[USER_NAME_KEY] || "";
@@ -503,6 +594,9 @@ document.addEventListener("DOMContentLoaded", () => {
     lengthSelect.value = length;
     userNameInput.value = userName;
     languageSelect.value = language;
+
+    // Update login UI (hides usage/upgrade when not logged in)
+    await updateLoginUI(language);
     
     // Apply language to all UI elements
     applyLanguageToUI(language);
@@ -511,8 +605,10 @@ document.addEventListener("DOMContentLoaded", () => {
     toneSelect.value = tone;
     lengthSelect.value = length;
     languageSelect.value = language;
-    // Load usage data with language
-    loadUsageData(language);
+    // Load usage data only when logged in
+    if (typeof ReplyMateAuth !== "undefined" && (await ReplyMateAuth.isSignedIn())) {
+      loadUsageData(language);
+    }
   });
 
   // Handle language change - don't apply immediately, wait for save
@@ -562,6 +658,7 @@ document.addEventListener("DOMContentLoaded", () => {
           
           // Apply the new language to UI after resetting button
           applyLanguageToUI(language);
+          updateLoginUI(language);
           
           // Re-set select values after applying language (since options were recreated)
           toneSelect.value = tone;

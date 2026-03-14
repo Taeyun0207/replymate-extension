@@ -1,43 +1,23 @@
 // ReplyMate background service worker (MV3).
+importScripts("lib/auth-config.js", "lib/auth-shared.js");
 
-// Get or create a persistent ReplyMate user ID
-async function getReplyMateUserId() {
-  return new Promise((resolve) => {
-    try {
-      chrome.storage.local.get(["replymate_user_id"], (result) => {
-        if (result.replymate_user_id) {
-          resolve(result.replymate_user_id);
-        } else {
-          const newUserId = crypto.randomUUID();
-          chrome.storage.local.set({ replymate_user_id: newUserId }, () => {
-            resolve(newUserId);
-          });
-        }
-      });
-    } catch {
-      // Fallback to a simple ID if crypto.randomUUID() or storage fails
-      const fallbackId = "fallback_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-      resolve(fallbackId);
-    }
-  });
-}
-
-// Shared function to create Stripe checkout session
+// Shared function to create Stripe checkout session (requires auth)
 async function createStripeCheckout(targetPlan) {
   console.log(`[ReplyMate Background] Creating Stripe checkout for ${targetPlan} plan`);
-  
+
+  const token = await ReplyMateAuthShared.getAccessToken();
+  if (!token) {
+    console.error("[ReplyMate Background] Not logged in - cannot create checkout");
+    chrome.tabs.create({ url: "https://replymate.ai/upgrade", active: true });
+    return false;
+  }
+
   try {
-    // Get user ID
-    const userId = await getReplyMateUserId();
-    
-    console.log(`[ReplyMate Background] Creating checkout session for user ${userId}, plan: ${targetPlan}`);
-    
-    // Create checkout session
     const response = await fetch("https://replymate-backend-bot8.onrender.com/billing/create-checkout-session", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-User-ID": userId
+        "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({
         targetPlan: targetPlan

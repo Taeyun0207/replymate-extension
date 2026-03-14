@@ -289,12 +289,64 @@ option {
     .cancel-link:hover {
       text-decoration: underline;
     }
+
+    .login-section {
+      margin-bottom: 14px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sign-in-button {
+      width: 100%;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--select-bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .sign-in-button:hover {
+      background: var(--border);
+    }
+
+    .signed-in-email {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .sign-out-button {
+      padding: 6px 12px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .sign-out-button:hover {
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <img class="header-icon" src="../icons/icon32.png" alt="ReplyMate Icon">
     <h2 class="header-title">ReplyMate Settings</h2>
+  </div>
+
+  <div id="loginSection" class="login-section">
+    <div id="loginNotSignedIn" style="display: none;">
+      <button id="signInButton" type="button" class="sign-in-button">Sign in with Google</button>
+    </div>
+    <div id="loginSignedIn" style="display: none;">
+      <div id="signedInEmail" class="signed-in-email"></div>
+      <button id="signOutButton" type="button" class="sign-out-button">Sign out</button>
+    </div>
   </div>
 
   <div class="field">
@@ -361,6 +413,10 @@ option {
     <a href="mailto:replymate.support@gmail.com">Support</a>
   </div>
   
+  <script src="../lib/supabase.min.js"></script>
+  <script src="../lib/auth-config.js"></script>
+  <script src="../lib/auth-shared.js"></script>
+  <script src="../lib/auth.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

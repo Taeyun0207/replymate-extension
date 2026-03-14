@@ -11,10 +11,12 @@
     "128": "icons/icon128.png"
   },
 
-  "permissions": ["storage", "tabs"],
+  "permissions": ["storage", "tabs", "identity"],
   "host_permissions": [
     "https://mail.google.com/*",
-    "https://replymate-backend-bot8.onrender.com/*"
+    "https://replymate-backend-bot8.onrender.com/*",
+    "https://*.supabase.co/*",
+    "https://accounts.google.com/*"
   ], 
   "background": {
     "service_worker": "background/service-worker.js"
@@ -23,7 +25,7 @@
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["content/gmail.js"]
+      "js": ["lib/auth-config.js", "lib/auth-shared.js", "content/gmail.js"]
     }
   ],
 
