@@ -2,7 +2,7 @@
 
 ## 1. Create the table
 
-Run this in **Supabase Dashboard → SQL Editor**:
+Run this in **Supabase Dashboard → SQL Editor** (use snake_case; Postgres lowercases unquoted names):
 
 ```sql
 CREATE TABLE IF NOT EXISTS public.users (
@@ -17,13 +17,12 @@ CREATE TABLE IF NOT EXISTS public.users (
   updated_at TIMESTAMPTZ NOT NULL
 );
 
--- Allow service role to access (bypasses RLS)
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access" ON public.users
   FOR ALL USING (true) WITH CHECK (true);
 ```
 
-If you prefer a different table name (e.g. `user_usage` to avoid conflicts), create it and set `DB_TABLE_NAME=user_usage` in `.env` and Render.
+**If your table uses camelCase columns** (userid, billingcyclestart, etc.), the code supports that. If you see "column X does not exist" errors, check your actual column names in Supabase Table Editor.
 
 ## 2. Stripe webhook (for upgrades)
 

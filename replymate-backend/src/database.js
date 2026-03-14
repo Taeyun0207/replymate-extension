@@ -24,32 +24,45 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // CREATE POLICY "Service role full access" ON public.user_usage FOR ALL USING (true) WITH CHECK (true);
 const TABLE_NAME = process.env.DB_TABLE_NAME || "users";
 
+// Column names: Postgres lowercases unquoted identifiers (userId -> userid)
+const COLS = {
+  id: "userid",
+  plan: "plan",
+  used: "used",
+  billingCycleStart: "billingcyclestart",
+  nextResetAt: "nextresetat",
+  stripeCustomerId: "stripecustomerid",
+  stripeSubscriptionId: "stripesubscriptionid",
+  createdAt: "createdat",
+  updatedAt: "updatedat",
+};
+
 function toRow(obj) {
   if (!obj) return null;
   return {
-    userId: obj.user_id ?? obj.userId,
-    plan: obj.plan ?? "free",
-    used: obj.used ?? 0,
-    billingCycleStart: obj.billing_cycle_start ?? obj.billingCycleStart,
-    nextResetAt: obj.next_reset_at ?? obj.nextResetAt,
-    stripeCustomerId: obj.stripe_customer_id ?? obj.stripeCustomerId,
-    stripeSubscriptionId: obj.stripe_subscription_id ?? obj.stripeSubscriptionId,
-    createdAt: obj.created_at ?? obj.createdAt,
-    updatedAt: obj.updated_at ?? obj.updatedAt,
+    userId: obj[COLS.id] ?? obj.user_id ?? obj.userId,
+    plan: obj[COLS.plan] ?? "free",
+    used: obj[COLS.used] ?? 0,
+    billingCycleStart: obj[COLS.billingCycleStart] ?? obj.billing_cycle_start ?? obj.billingCycleStart,
+    nextResetAt: obj[COLS.nextResetAt] ?? obj.next_reset_at ?? obj.nextResetAt,
+    stripeCustomerId: obj[COLS.stripeCustomerId] ?? obj.stripe_customer_id ?? obj.stripeCustomerId,
+    stripeSubscriptionId: obj[COLS.stripeSubscriptionId] ?? obj.stripe_subscription_id ?? obj.stripeSubscriptionId,
+    createdAt: obj[COLS.createdAt] ?? obj.created_at ?? obj.createdAt,
+    updatedAt: obj[COLS.updatedAt] ?? obj.updated_at ?? obj.updatedAt,
   };
 }
 
 function toDb(obj) {
   return {
-    user_id: obj.userId,
-    plan: obj.plan,
-    used: obj.used,
-    billing_cycle_start: obj.billingCycleStart,
-    next_reset_at: obj.nextResetAt,
-    stripe_customer_id: obj.stripeCustomerId ?? null,
-    stripe_subscription_id: obj.stripeSubscriptionId ?? null,
-    created_at: obj.createdAt,
-    updated_at: obj.updatedAt,
+    [COLS.id]: obj.userId,
+    [COLS.plan]: obj.plan,
+    [COLS.used]: obj.used,
+    [COLS.billingCycleStart]: obj.billingCycleStart,
+    [COLS.nextResetAt]: obj.nextResetAt,
+    [COLS.stripeCustomerId]: obj.stripeCustomerId ?? null,
+    [COLS.stripeSubscriptionId]: obj.stripeSubscriptionId ?? null,
+    [COLS.createdAt]: obj.createdAt,
+    [COLS.updatedAt]: obj.updatedAt,
   };
 }
 
@@ -61,7 +74,7 @@ async function getUser(userId) {
   const { data: row, error } = await supabase
     .from(TABLE_NAME)
     .select("*")
-    .eq("user_id", userId)
+    .eq(COLS.id, userId)
     .maybeSingle();
 
   if (error) {
@@ -83,12 +96,12 @@ async function getUser(userId) {
       const { data: updated, error: updateErr } = await supabase
         .from(TABLE_NAME)
         .update({
-          used: 0,
-          billing_cycle_start: newCycleStart,
-          next_reset_at: nextReset,
-          updated_at: now,
+          [COLS.used]: 0,
+          [COLS.billingCycleStart]: newCycleStart,
+          [COLS.nextResetAt]: nextReset,
+          [COLS.updatedAt]: now,
         })
-        .eq("user_id", userId)
+        .eq(COLS.id, userId)
         .select()
         .single();
 
@@ -143,16 +156,15 @@ async function updateUserPlan(
     const { data, error } = await supabase
       .from(TABLE_NAME)
       .update({
-        plan,
-        used: 0,
-        billing_cycle_start: now,
-        next_reset_at: nextReset,
-        stripe_customer_id: stripeCustomerId ?? existingUser.stripeCustomerId,
-        stripe_subscription_id:
-          stripeSubscriptionId ?? existingUser.stripeSubscriptionId,
-        updated_at: now,
+        [COLS.plan]: plan,
+        [COLS.used]: 0,
+        [COLS.billingCycleStart]: now,
+        [COLS.nextResetAt]: nextReset,
+        [COLS.stripeCustomerId]: stripeCustomerId ?? existingUser.stripeCustomerId,
+        [COLS.stripeSubscriptionId]: stripeSubscriptionId ?? existingUser.stripeSubscriptionId,
+        [COLS.updatedAt]: now,
       })
-      .eq("user_id", userId)
+      .eq(COLS.id, userId)
       .select()
       .single();
 
@@ -194,17 +206,17 @@ async function recordUsage(userId) {
 
   const { data: row, error: fetchErr } = await supabase
     .from(TABLE_NAME)
-    .select("used")
-    .eq("user_id", userId)
+    .select(COLS.used)
+    .eq(COLS.id, userId)
     .single();
 
   if (fetchErr || !row) throw fetchErr || new Error("User not found");
 
-  const newUsed = (row.used ?? 0) + 1;
+  const newUsed = (row[COLS.used] ?? row.used ?? 0) + 1;
   const { error: updateErr } = await supabase
     .from(TABLE_NAME)
-    .update({ used: newUsed, updated_at: now })
-    .eq("user_id", userId);
+    .update({ [COLS.used]: newUsed, [COLS.updatedAt]: now })
+    .eq(COLS.id, userId);
 
   if (updateErr) {
     console.error("[DB] recordUsage failed:", updateErr.message, updateErr.details);
@@ -221,7 +233,7 @@ function closeDatabase() {
 async function testConnection() {
   const { data, error } = await supabase
     .from(TABLE_NAME)
-    .select("user_id")
+    .select(COLS.id)
     .limit(1)
     .maybeSingle();
   if (error) throw error;
