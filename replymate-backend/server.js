@@ -355,7 +355,7 @@ Instructions:
 - Write only the email body.
 - Do not include a subject line.
 - ${toneInstructions}
-- End with an appropriate closing using the sender name if available.
+- End with an appropriate closing. ${userName ? `Sign off with the name: "${userName}". Use this name exactly as written, regardless of the reply language.` : "Omit the sender name if unknown."}
 ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` : ""}
 `;
 
