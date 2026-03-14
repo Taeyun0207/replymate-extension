@@ -402,8 +402,12 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
         },
       });
     } catch (error) {
-      console.error("OpenAI generation error:", error);
-      res.status(500).json({ error: "Failed to generate AI reply." });
+      const errMsg = error?.message || String(error);
+      console.error("OpenAI generation error:", errMsg);
+      res.status(500).json({
+        error: "Failed to generate AI reply.",
+        detail: process.env.NODE_ENV === "development" ? errMsg : undefined,
+      });
     }
   } catch (error) {
     console.error("Generate reply error:", error);

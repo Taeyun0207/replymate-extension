@@ -550,11 +550,13 @@ async function generateAIReply(payload) {
           return "";
         }
 
-        console.error("[ReplyMate] Backend error:", {
-          status: response.status,
-          statusText: response.statusText,
-          errorData
-        });
+        // Extract user-friendly error message (avoid [object Object])
+        const baseMsg = typeof errorData.error === "string"
+          ? errorData.error
+          : errorData.rawText || `Request failed (${response.status})`;
+        const errorMsg = errorData.detail ? `${baseMsg} (${errorData.detail})` : baseMsg;
+        console.error("[ReplyMate] Backend error:", response.status, response.statusText, errorMsg);
+        showReplyMateMessage(`Reply generation failed: ${errorMsg}`);
         return "";
       }
 
@@ -566,7 +568,7 @@ async function generateAIReply(payload) {
         data = JSON.parse(responseText);
       } catch (parseError) {
         console.error("[ReplyMate] Failed to parse success response JSON:", parseError);
-        console.log("[ReplyMate] Raw response text:", responseText);
+        showReplyMateMessage("Reply generation failed: Invalid response from server.");
         return "";
       }
 
@@ -576,18 +578,19 @@ async function generateAIReply(payload) {
       }
 
       console.error("[ReplyMate] Unexpected backend response shape:", data);
+      showReplyMateMessage("Reply generation failed: Unexpected response format.");
       return "";
     })
-    .catch((error) => {
-      console.error("[ReplyMate] Network/fetch error:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
+    .catch(async (error) => {
+      const msg = error && typeof error.message === "string" ? error.message : "Network error";
+      console.error("[ReplyMate] Network/fetch error:", msg);
+      showReplyMateMessage(`Reply generation failed: ${msg}`);
       return "";
     });
   } catch (error) {
-    console.error("[ReplyMate] generateAIReply function error:", error);
+    const msg = error && typeof error.message === "string" ? error.message : "Unexpected error";
+    console.error("[ReplyMate] generateAIReply function error:", msg);
+    showReplyMateMessage(`Reply generation failed: ${msg}`);
     return "";
   }
 }
