@@ -22,7 +22,17 @@ CREATE POLICY "Service role full access" ON public.users
   FOR ALL USING (true) WITH CHECK (true);
 ```
 
-**If your table uses camelCase columns** (userid, billingcyclestart, etc.), the code supports that. If you see "column X does not exist" errors, check your actual column names in Supabase Table Editor.
+**If your table has camelCase columns** (userid, billingcyclestart, etc.), rename them to snake_case:
+
+```sql
+ALTER TABLE public.users RENAME COLUMN userid TO user_id;
+ALTER TABLE public.users RENAME COLUMN billingcyclestart TO billing_cycle_start;
+ALTER TABLE public.users RENAME COLUMN nextresetat TO next_reset_at;
+ALTER TABLE public.users RENAME COLUMN stripecustomerid TO stripe_customer_id;
+ALTER TABLE public.users RENAME COLUMN stripesubscriptionid TO stripe_subscription_id;
+ALTER TABLE public.users RENAME COLUMN createdat TO created_at;
+ALTER TABLE public.users RENAME COLUMN updatedat TO updated_at;
+```
 
 ## 2. Stripe webhook (for upgrades)
 
