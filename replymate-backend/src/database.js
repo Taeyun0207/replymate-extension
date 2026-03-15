@@ -151,6 +151,8 @@ async function updateUserPlan(
         next_reset_at: nextReset,
         stripe_customer_id: stripeCustomerId ?? existingUser.stripeCustomerId,
         stripe_subscription_id: stripeSubscriptionId ?? existingUser.stripeSubscriptionId,
+        cancel_at_period_end: false,
+        period_end_at: null,
         updated_at: now,
       })
       .eq("user_id", userId)
