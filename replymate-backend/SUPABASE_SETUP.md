@@ -34,13 +34,21 @@ ALTER TABLE public.users RENAME COLUMN createdat TO created_at;
 ALTER TABLE public.users RENAME COLUMN updatedat TO updated_at;
 ```
 
-## 2. Stripe webhook (for upgrades)
+## 2. Cancel subscription columns (optional)
 
-For plan upgrades to work after payment:
+For "Cancel at period end" to show scheduled status in the UI:
+
+```sql
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN DEFAULT false;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS period_end_at TIMESTAMPTZ;
+```
+
+## 3. Stripe webhook (for upgrades and cancellations)
 
 1. Go to **Stripe Dashboard → Developers → Webhooks**
 2. Add endpoint: `https://replymate-backend-bot8.onrender.com/stripe/webhook`
-3. Select event: `checkout.session.completed`
+3. Select events: `checkout.session.completed`, `customer.subscription.deleted`
 4. Copy the **Signing secret** and add to Render env as `STRIPE_WEBHOOK_SECRET`
 
-Without this, payments complete but the plan/usage won't update.
+- `checkout.session.completed` – upgrades plan after payment
+- `customer.subscription.deleted` – downgrades to free when subscription ends

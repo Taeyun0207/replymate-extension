@@ -4,7 +4,7 @@ require("dotenv").config();
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 const { PLAN_LIMITS } = require("./src/config/plans");
-const { getUser, updateUserPlan, recordUsage, testConnection } = require("./src/database");
+const { getUser, updateUserPlan, recordUsage, testConnection, updateUserCancelScheduled, downgradeUserBySubscriptionId } = require("./src/database");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 
@@ -125,6 +125,8 @@ async function checkUsageLimit(userId) {
     used: usage.used,
     limit: limit,
     plan: usage.plan,
+    cancelScheduled: !!usage.cancelAtPeriodEnd,
+    periodEndDate: usage.periodEndAt || null,
   };
 }
 
@@ -190,6 +192,17 @@ app.post(
         });
       } catch (error) {
         console.error("Error processing checkout.session.completed:", error);
+        return res.status(500).json({ error: "Failed to process webhook" });
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object;
+      try {
+        await downgradeUserBySubscriptionId(subscription.id);
+        console.log("[Stripe] User downgraded to free (subscription ended):", subscription.id);
+      } catch (error) {
+        console.error("Error processing customer.subscription.deleted:", error);
         return res.status(500).json({ error: "Failed to process webhook" });
       }
     }
@@ -429,6 +442,8 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
           used: updatedUsage.used,
           limit: updatedUsage.limit,
           remaining: updatedUsage.remaining,
+          cancelScheduled: updatedUsage.cancelScheduled,
+          periodEndDate: updatedUsage.periodEndDate,
         },
       });
     } catch (error) {
@@ -515,10 +530,13 @@ app.post("/billing/cancel-subscription", requireAuth, async (req, res) => {
     const periodEndDate = new Date(periodEnd * 1000).toISOString();
     const remainingDays = Math.ceil((periodEnd * 1000 - Date.now()) / (24 * 60 * 60 * 1000));
 
+    await updateUserCancelScheduled(userId, periodEndDate);
+
     res.json({
       success: true,
       cancelAt: periodEndDate,
       remainingDays: Math.max(0, remainingDays),
+      cancelScheduled: true,
     });
   } catch (error) {
     console.error("Cancel subscription error:", error);

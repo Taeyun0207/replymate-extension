@@ -34,6 +34,8 @@ function toRow(obj) {
     nextResetAt: obj.next_reset_at ?? obj.nextResetAt,
     stripeCustomerId: obj.stripe_customer_id ?? obj.stripeCustomerId,
     stripeSubscriptionId: obj.stripe_subscription_id ?? obj.stripeSubscriptionId,
+    cancelAtPeriodEnd: !!obj.cancel_at_period_end,
+    periodEndAt: obj.period_end_at ?? null,
     createdAt: obj.created_at ?? obj.createdAt,
     updatedAt: obj.updated_at ?? obj.updatedAt,
   };
@@ -217,6 +219,41 @@ function closeDatabase() {
   // No-op: Supabase client does not require explicit connection close
 }
 
+async function updateUserCancelScheduled(userId, periodEndAt) {
+  const { error } = await supabase
+    .from(TABLE_NAME)
+    .update({
+      cancel_at_period_end: true,
+      period_end_at: periodEndAt,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
+async function downgradeUserBySubscriptionId(subscriptionId) {
+  const now = new Date().toISOString();
+  const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .update({
+      plan: "free",
+      used: 0,
+      billing_cycle_start: now,
+      next_reset_at: nextReset,
+      stripe_subscription_id: null,
+      cancel_at_period_end: false,
+      period_end_at: null,
+      updated_at: now,
+    })
+    .eq("stripe_subscription_id", subscriptionId)
+    .select("user_id")
+    .maybeSingle();
+  if (error) throw error;
+  if (data) console.log("[DB] User downgraded to free (subscription ended):", data.user_id);
+  return data;
+}
+
 async function testConnection() {
   const { data, error } = await supabase
     .from(TABLE_NAME)
@@ -233,4 +270,6 @@ module.exports = {
   recordUsage,
   closeDatabase,
   testConnection,
+  updateUserCancelScheduled,
+  downgradeUserBySubscriptionId,
 };
