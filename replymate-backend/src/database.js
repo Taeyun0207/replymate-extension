@@ -237,6 +237,23 @@ async function updateUserCancelScheduled(userId, periodEndAt) {
   if (error) throw error;
 }
 
+async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, periodEndIso) {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .update({
+      billing_cycle_start: periodStartIso,
+      next_reset_at: periodEndIso,
+      updated_at: now,
+    })
+    .eq("stripe_subscription_id", subscriptionId)
+    .select("user_id")
+    .maybeSingle();
+  if (error) throw error;
+  if (data) console.log("[DB] Period synced from Stripe for user:", data.user_id);
+  return data;
+}
+
 async function downgradeUserBySubscriptionId(subscriptionId) {
   const now = new Date().toISOString();
   const nextReset = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -278,4 +295,5 @@ module.exports = {
   testConnection,
   updateUserCancelScheduled,
   downgradeUserBySubscriptionId,
+  syncPeriodBySubscriptionId,
 };

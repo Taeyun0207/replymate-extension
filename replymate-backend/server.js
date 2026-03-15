@@ -4,7 +4,7 @@ require("dotenv").config();
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 const { PLAN_LIMITS } = require("./src/config/plans");
-const { getUser, updateUserPlan, recordUsage, testConnection, updateUserCancelScheduled, downgradeUserBySubscriptionId } = require("./src/database");
+const { getUser, updateUserPlan, recordUsage, testConnection, updateUserCancelScheduled, downgradeUserBySubscriptionId, syncPeriodBySubscriptionId } = require("./src/database");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 
@@ -211,6 +211,25 @@ app.post(
         });
       } catch (error) {
         console.error("Error processing checkout.session.completed:", error);
+        return res.status(500).json({ error: "Failed to process webhook" });
+      }
+    }
+
+    if (event.type === "customer.subscription.updated") {
+      const subscription = event.data.object;
+      try {
+        const periodEnd = subscription.current_period_end ?? subscription.items?.data?.[0]?.current_period_end;
+        const periodStart = subscription.current_period_start ?? subscription.items?.data?.[0]?.current_period_start;
+        if (periodEnd && periodStart) {
+          const periodStartIso = new Date(periodStart * 1000).toISOString();
+          const periodEndIso = new Date(periodEnd * 1000).toISOString();
+          const updated = await syncPeriodBySubscriptionId(subscription.id, periodStartIso, periodEndIso);
+          if (updated) {
+            console.log("[Stripe] Period synced for subscription (renewal/update):", subscription.id);
+          }
+        }
+      } catch (error) {
+        console.error("Error processing customer.subscription.updated:", error);
         return res.status(500).json({ error: "Failed to process webhook" });
       }
     }

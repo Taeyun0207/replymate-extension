@@ -61,12 +61,16 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN D
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS period_end_at TIMESTAMPTZ;
 ```
 
-## 3. Stripe webhook (for upgrades and cancellations)
+## 3. Stripe webhook (for upgrades, renewals, and cancellations)
 
 1. Go to **Stripe Dashboard → Developers → Webhooks**
-2. Add endpoint: `https://replymate-backend-bot8.onrender.com/stripe/webhook`
-3. Select events: `checkout.session.completed`, `customer.subscription.deleted`
+2. Add endpoint: `https://replymate-backend-bot8.onrender.com/stripe/webhook` (or your backend URL)
+3. Select events:
+   - `checkout.session.completed`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
 4. Copy the **Signing secret** and add to Render env as `STRIPE_WEBHOOK_SECRET`
 
 - `checkout.session.completed` – upgrades plan after payment
+- `customer.subscription.updated` – syncs billing period when subscription renews or changes
 - `customer.subscription.deleted` – downgrades to free when subscription ends
