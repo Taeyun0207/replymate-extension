@@ -526,7 +526,10 @@ app.post("/billing/cancel-subscription", requireAuth, async (req, res) => {
       cancel_at_period_end: true,
     });
 
-    const periodEnd = subscription.current_period_end;
+    // Stripe Basil API (2025+) moved current_period_end to items; fallback to top-level for older API
+    const periodEnd =
+      subscription.current_period_end ??
+      subscription.items?.data?.[0]?.current_period_end;
     if (periodEnd == null || typeof periodEnd !== "number" || periodEnd <= 0) {
       console.error("Cancel subscription: invalid current_period_end from Stripe", { subscriptionId, periodEnd });
       return res.status(500).json({ error: "Invalid subscription data from Stripe" });
