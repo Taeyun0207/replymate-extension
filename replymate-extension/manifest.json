@@ -39,7 +39,8 @@
         "lib/auth-config.js",
         "lib/auth-shared.js",
         "content/gmail.js"
-      ]
+      ],
+      "all_frames": true
     }
   ],
   "action": {

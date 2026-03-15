@@ -253,17 +253,24 @@ async function isLoggedIn() {
 }
 
 // Get access token for API calls (requires login).
-// Prefer background script (same context as popup) for reliable auth; fallback to local auth-shared.
 async function getAccessToken() {
+  // Ensure config is in storage before refresh (content script may run in iframe)
+  if (typeof ReplyMateAuthShared !== "undefined") {
+    const g = typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : {});
+    const url = g.REPLYMATE_SUPABASE_URL;
+    const anonKey = g.REPLYMATE_SUPABASE_ANON_KEY;
+    if (url && anonKey) await ReplyMateAuthShared.syncConfig(url, anonKey);
+  }
+  // 1. Try local auth-shared (direct storage access)
+  if (typeof ReplyMateAuthShared !== "undefined") {
+    const localToken = await ReplyMateAuthShared.getAccessToken();
+    if (localToken) return localToken;
+  }
+  // 2. Fallback: ask background
   try {
     const res = await chrome.runtime.sendMessage({ type: "GET_ACCESS_TOKEN" });
     if (res && res.token) return res.token;
-  } catch (_) {
-    // Extension context invalidated or background unavailable
-  }
-  if (typeof ReplyMateAuthShared !== "undefined") {
-    return await ReplyMateAuthShared.getAccessToken();
-  }
+  } catch (_) {}
   return null;
 }
 
@@ -736,8 +743,8 @@ function buildLengthInstruction(length, language = DEFAULT_LANGUAGE) {
   
   const userLanguageName = languageNames[language] || 'English';
   
-  // Language rule (backend system prompt enforces; this reinforces)
-  const criticalLanguageRule = `LANGUAGE: Reply strictly in ${userLanguageName}. No mixing. Placeholders in [] must be in ${userLanguageName} (e.g. EN [date], KO [날짜], JP [日付]).`;
+  // Language rule (backend enforces; this reinforces briefly)
+  const criticalLanguageRule = `LANGUAGE: Reply strictly in ${userLanguageName}. No mixing. Placeholders in [] must also be in ${userLanguageName}.`;
 
   // Language-specific base instructions — equal strength and specificity for EN/KO/JP
   const languageInstructions = {
@@ -1021,12 +1028,12 @@ function buildLengthInstructionWithAuto(length, language = DEFAULT_LANGUAGE, aut
   const effectiveLength = autoDetectedLength || length || DEFAULT_LENGTH;
   const baseInstruction = buildLengthInstruction(effectiveLength, language);
   
-  // When Auto mode, append scope hint
+  // When Auto mode, append scope hint (number-based helps model treat as checklist)
   let scopeHint = "";
   if (effectiveLength === "auto" && scopeContext && scopeContext.latestMessage) {
     const scope = getMessageScope(scopeContext.latestMessage);
     if (scope && (scope.questionCount > 0 || scope.requestCount > 0)) {
-      scopeHint = "\n\nAddress all questions and requests.";
+      scopeHint = `\n\nAddress all questions and requests. There are ${scope.questionCount} question(s) and ${scope.requestCount} request(s).`;
     }
   }
 

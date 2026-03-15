@@ -140,9 +140,9 @@
       }
     },
 
-    syncConfig(url, anonKey) {
+    async syncConfig(url, anonKey) {
       if (url && anonKey) {
-        setStored({ [CONFIG_URL_KEY]: url, [CONFIG_ANON_KEY]: anonKey });
+        await setStored({ [CONFIG_URL_KEY]: url, [CONFIG_ANON_KEY]: anonKey });
       }
     },
   };
