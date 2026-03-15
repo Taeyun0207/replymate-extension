@@ -115,7 +115,7 @@ const TRANSLATIONS = {
       pro_plus: "Pro+"
     },
     repliesLeft: "replies left",
-    instructionPlaceholder: "Additional details (optional, e.g. date, time, location).",
+    instructionPlaceholder: "Additional details (optional, e.g. date, time, location)",
     upgradeToPro: "Upgrade to Pro",
     upgradeToProPlus: "Upgrade to Pro+",
     enjoyReplyMate: "Enjoy ReplyMate!",
