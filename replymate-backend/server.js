@@ -58,6 +58,7 @@ const ACKNOWLEDGEMENTS = {
   english: ["thanks", "thank you", "ok", "okay", "got it", "sounds good", "yes", "sure"],
   korean: ["네", "알겠습니다", "감사합니다", "고맙습니다", "예", "좋습니다"],
   japanese: ["はい", "了解", "ありがとう", "ありがとうございます", "分かりました"],
+  spanish: ["gracias", "ok", "vale", "de acuerdo", "entendido", "sí", "claro", "perfecto"],
 };
 const ALL_ACKNOWLEDGEMENTS = Object.values(ACKNOWLEDGEMENTS).flat();
 
@@ -97,6 +98,7 @@ function determineAutoLength(latestMessage) {
     "please", "could you", "can you", "would you", "let me know",
     "send", "confirm", "제발", "부탁", "해주세요", "주세요",
     "お願い", "ください", "できますか", "お願いします",
+    "por favor", "podrías", "puedes", "házmelo saber", "envía", "confirma",
   ];
   const hasRequest = requestWords.some((word) =>
     latestMessageLower.includes(word.toLowerCase())
@@ -470,21 +472,21 @@ Quality priorities (in order):
 2. Context-appropriate: A simple "Thanks!" gets a brief, warm reply. A complex request gets a thoughtful, complete response. Do not over-explain when a short reply is enough; do not under-explain when the situation needs more.
 3. Complete: Address every question and request. If there are multiple points, respond to each naturally—not as a bullet-point list unless the context warrants it.
 4. Direct: Do not restate or paraphrase the sender's message. Get to your response. No "I understand you're asking about..."—just answer.
-5. No fabrication: Never invent dates, times, prices, locations, URLs, document names, deadlines, quantities, or any detail not in the email. If the sender asks for info: (1) use it if the user provided it in the additional instruction (highest priority), (2) use it if it's in the email, (3) otherwise use a placeholder in []. Never guess or fabricate.
+5. No fabrication: Never invent dates, times, prices, locations, URLs, names, , deadlines, quantities, or any detail not in the email. If the sender asks for info: (1) use it if the user provided it in the additional instruction (highest priority), (2) use it if it's in the email, (3) otherwise use a placeholder in []. Never guess or fabricate.
 
-PLACEHOLDER RULE: Use a placeholder only when info is missing from BOTH the user's additional instruction AND the email. The additional instruction takes priority—if the user provided the detail there, use it. Create context-appropriate placeholders for ANY missing information—not limited to date, time, price, location. Examples: [meeting link], [delivery date], [URL], [document name], [quantity]. Placeholders MUST be in the user's language setting (${userLang}). Common examples: ${placeholderExamples}. For other types, create the appropriate placeholder in ${userLang}.
+PLACEHOLDER RULE: Use a placeholder only when info is missing from BOTH the user's additional instruction AND the email. The additional instruction takes priority—if the user provided the detail there, use it. Create context-appropriate placeholders for ANY missing information—not limited to date, time, price, location. Examples: [time], [date], [price], [location], [URL], [name], [quantity]. Placeholders MUST be in the user's language setting (${userLang}). Common examples: ${placeholderExamples}. For other types, create the appropriate placeholder in ${userLang}.
 
 Instructions:
 - Write only the email body. No subject line.
 - Greeting: Choose the sender's name using this priority: (1) name in the email signature (e.g. Best, Michael), (2) name mentioned in the email body, (3) name from the From field${recipientName ? ` ("${recipientName}")` : " (see thread header)"}, (4) if none available or uncertain → use neutral greeting (Hi, / Hello,).
 - ${toneInstructions}
 - End with an appropriate closing. ${userName ? `Sign off with the name: "${userName}". Use this name exactly as written, regardless of the reply language.` : "Omit the sender name if unknown."}
-${additionalInstruction ? `- Additional instruction (PRIORITY: use this info first—it overrides email content and placeholders): ${additionalInstruction}` : ""}
+${additionalInstruction ? `- Additional instruction (PRIORITY: use this info first): ${additionalInstruction}. Weave this information naturally into your reply—write flowing, human-sounding prose. Do not list items, use bullet points, or sound like a checklist. The output should feel as natural as when no additional info is given.` : ""}
 `;
 
     // Context-based language: reply in the same language as the email, not user settings
     const contextBasedSystemPrompt =
-      "You are an expert at writing natural, human-sounding email replies. Your goal is to sound like a real person—warm when appropriate, concise when appropriate, never robotic or generic. CRITICAL: Reply in the SAME LANGUAGE as the email. If the email is in Korean, reply in Korean. If in Japanese, reply in Japanese. If in Spanish, reply in Spanish. If in English or another language, reply in that language. Match the register and formality of the incoming message. ANTI-HALLUCINATION: Never invent facts. If the sender asks for info: (1) use it from the user's additional instruction first (highest priority), (2) use it from the email if present, (3) otherwise use a placeholder in []. Create context-appropriate placeholders flexibly—e.g. [meeting link], [delivery date], [URL]—whatever fits. Never guess. PLACEHOLDER RULE: Placeholders must be in the user's language setting (see prompt). Follow the examples given in the prompt. GREETING RULE: Use sender name in this order—1) signature, 2) body, 3) From field, 4) neutral (Hi,/Hello,). Never guess. Prioritize natural, idiomatic phrasing over literal translation. Avoid AI-sounding phrases: no 'I'd be happy to help,' 'Please don't hesitate to reach out,' or similar clichés unless they genuinely fit the context.";
+      "You are an expert at writing natural, human-sounding email replies. Your goal is to sound like a real person—warm when appropriate, concise when appropriate, never robotic or generic. When the user provides additional information, weave it naturally into flowing prose—never output it as a list, bullet points, or checklist. The reply should feel equally natural with or without additional info. CRITICAL: Reply in the SAME LANGUAGE as the email. If the email is in Korean, reply in Korean. If in Japanese, reply in Japanese. If in Spanish, reply in Spanish. If in English or another language, reply in that language. Match the register and formality of the incoming message. ANTI-HALLUCINATION: Never invent facts. If the sender asks for info: (1) use it from the user's additional instruction first (highest priority), (2) use it from the email if present, (3) otherwise use a placeholder in []. Create context-appropriate placeholders flexibly—e.g. [meeting link], [delivery date], [URL]—whatever fits. Never guess. PLACEHOLDER RULE: Placeholders must be in the user's language setting (see prompt). Follow the examples given in the prompt. GREETING RULE: Use sender name in this order—1) signature, 2) body, 3) From field, 4) neutral (Hi,/Hello,). Never guess. Prioritize natural, idiomatic phrasing over literal translation. Avoid AI-sounding phrases: no 'I'd be happy to help,' 'Please don't hesitate to reach out,' or similar clichés unless they genuinely fit the context.";
 
     try {
       const completion = await openai.chat.completions.create({
