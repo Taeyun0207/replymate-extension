@@ -489,7 +489,6 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
         ],
         reasoning_effort: "medium",
         verbosity: "medium",
-        temperature: 0.8,
         max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 500,
       });
 

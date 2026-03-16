@@ -13,6 +13,7 @@ const DEFAULT_LANGUAGE = "english";
 const TRANSLATIONS = {
   english: {
     settings: "ReplyMate Settings",
+    settingsLabel: "Settings",
     replyTone: "Reply Tone",
     replyLength: "Reply Length",
     yourName: "Your Name",
@@ -74,6 +75,7 @@ const TRANSLATIONS = {
   },
   korean: {
     settings: "ReplyMate 설정",
+    settingsLabel: "설정",
     replyTone: "답장 톤",
     replyLength: "답장 길이",
     yourName: "사용자 이름",
@@ -132,7 +134,8 @@ const TRANSLATIONS = {
     copied: "복사됨!",
   },
   japanese: {
-    settings: "設定",
+    settings: "ReplyMate 設定",
+    settingsLabel: "設定",
     replyTone: "返信のトーン",
     replyLength: "返信返信の長さ長さ",
     yourName: "表示名",
@@ -192,6 +195,7 @@ const TRANSLATIONS = {
   },
   spanish: {
     settings: "Configuración de ReplyMate",
+    settingsLabel: "Configuración de",
     replyTone: "Tono de respuesta",
     replyLength: "Longitud de respuesta",
     yourName: "Tu nombre",
@@ -542,7 +546,26 @@ function applyLanguageToUI(language = DEFAULT_LANGUAGE, participants = []) {
   document.querySelector('label[for="userNameInput"]').textContent = getTranslation("yourName", uiLanguage);
   document.querySelector('label[for="languageSelect"]').textContent = getTranslation("language", uiLanguage);
   document.getElementById("saveButton").textContent = getTranslation("save", uiLanguage);
-  document.querySelector(".header-title").textContent = getTranslation("settings", uiLanguage);
+  const headerTitle = document.querySelector(".header-title");
+  if (headerTitle) {
+    headerTitle.innerHTML = "";
+    const brand = document.createElement("span");
+    brand.className = "header-brand";
+    brand.textContent = "ReplyMate";
+    const settings = document.createElement("span");
+    settings.className = "header-settings";
+    settings.textContent = getTranslation("settingsLabel", uiLanguage);
+    const space = document.createTextNode(" ");
+    if (uiLanguage === "spanish") {
+      headerTitle.appendChild(settings);
+      headerTitle.appendChild(space);
+      headerTitle.appendChild(brand);
+    } else {
+      headerTitle.appendChild(brand);
+      headerTitle.appendChild(space);
+      headerTitle.appendChild(settings);
+    }
+  }
   const topupLabelEl = document.querySelector(".topup-label");
   if (topupLabelEl) topupLabelEl.textContent = getTranslation("topUpReplies", uiLanguage);
   const privacyPolicyLink = document.getElementById("privacyPolicyLink");
