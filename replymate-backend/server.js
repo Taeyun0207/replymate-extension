@@ -448,10 +448,10 @@ app.post("/generate-reply", requireAuth, async (req, res) => {
 
     const userLang = (language || "english").toLowerCase();
     const PLACEHOLDER_BY_LANG = {
-      english: "[date], [time], [price], [location]",
-      korean: "[날짜], [시간], [가격], [장소]",
-      japanese: "[日付], [時間], [価格], [場所]",
-      spanish: "[fecha], [hora], [precio], [ubicación]",
+      english: "[date], [time], [price], [location], [URL], [name], [quantity]",
+      korean: "[날짜], [시간], [가격], [장소], [URL], [이름], [수량]",
+      japanese: "[日付], [時間], [価格], [場所], [URL], [名前], [数量]",
+      spanish: "[fecha], [hora], [precio], [ubicación], [URL], [nombre], [cantidad]",
     };
     const placeholderExamples = PLACEHOLDER_BY_LANG[userLang] || PLACEHOLDER_BY_LANG.english;
 
@@ -472,9 +472,9 @@ Quality priorities (in order):
 2. Context-appropriate: A simple "Thanks!" gets a brief, warm reply. A complex request gets a thoughtful, complete response. Do not over-explain when a short reply is enough; do not under-explain when the situation needs more.
 3. Complete: Address every question and request. If there are multiple points, respond to each naturally—not as a bullet-point list unless the context warrants it.
 4. Direct: Do not restate or paraphrase the sender's message. Get to your response. No "I understand you're asking about..."—just answer.
-5. No fabrication: Never invent dates, times, prices, locations, URLs, names, , deadlines, quantities, or any detail not in the email. If the sender asks for info: (1) use it if the user provided it in the additional instruction (highest priority), (2) use it if it's in the email, (3) otherwise use a placeholder in []. Never guess or fabricate.
+5. No fabrication: Never invent dates, times, prices, locations, URLs, names, deadlines, quantities, or any detail not in the email. If the sender asks for info: (1) use it if the user provided it in the additional instruction (highest priority), (2) use it if it's in the email, (3) otherwise use a placeholder in []. Never guess or fabricate.
 
-PLACEHOLDER RULE: Use a placeholder only when info is missing from BOTH the user's additional instruction AND the email. The additional instruction takes priority—if the user provided the detail there, use it. Create context-appropriate placeholders for ANY missing information—not limited to date, time, price, location. Examples: [time], [date], [price], [location], [URL], [name], [quantity]. Placeholders MUST be in the user's language setting (${userLang}). Common examples: ${placeholderExamples}. For other types, create the appropriate placeholder in ${userLang}.
+PLACEHOLDER RULE (CRITICAL): When information is missing from BOTH the user's additional instruction AND the email, you MUST use a placeholder—never invent or guess. Priority: (1) additional instruction, (2) email content, (3) placeholder. Placeholders MUST be in the user's language setting (${userLang}). Use the format [placeholder] with brackets. Examples for user language: ${placeholderExamples}. For other missing info types, create an appropriate placeholder in the user's language (e.g. [deadline], [phone number]).
 
 Instructions:
 - Write only the email body. No subject line.

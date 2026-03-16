@@ -771,7 +771,7 @@ function mapLanguageToOpenAI(language) {
 function buildLengthInstruction(length, language = DEFAULT_LANGUAGE) {
   const l = (length || DEFAULT_LENGTH).toLowerCase();
   
-  // Context-based language: reply matches the email language; placeholders follow user's language setting
+  // Context-based language: reply matches email; placeholders follow user's language setting
   const languageRule = "LANGUAGE: Reply in the same language as the email you are replying to. Match the language, tone, and register of the incoming message. Placeholders in [] must be in the user's language setting (from popup).";
 
   // Auto mode - let backend determine length
@@ -1060,7 +1060,7 @@ function buildLengthInstructionWithAuto(length, language = DEFAULT_LANGUAGE, aut
   }
 
   // Anti-hallucination: strict—never fabricate; use placeholders when info is missing
-  const antiHallucinationRules = "CRITICAL: Never invent or assume facts (dates, times, prices, locations, etc.). If the sender asks for info not in the email, use a placeholder in [] in the same language as your reply. Do not guess.";
+  const antiHallucinationRules = "CRITICAL: Never invent or assume facts (dates, times, prices, locations, URLs, names, etc.). If the sender asks for info not in the email or additional instruction, use a placeholder in [] in the user's language setting. Do not guess.";
 
   return `${baseInstruction}${scopeHint}\n\n${antiHallucinationRules}`;
 }
