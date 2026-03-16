@@ -487,9 +487,9 @@ ${additionalInstruction ? `- Additional instruction: ${additionalInstruction}` :
             content: prompt,
           },
         ],
-        reasoning_effort: "medium",
+        reasoning_effort: "low",
         verbosity: "medium",
-        max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 500,
+        max_completion_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 8000,
       });
 
       const reply = completion.choices?.[0]?.message?.content?.trim();
