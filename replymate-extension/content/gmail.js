@@ -1563,17 +1563,14 @@ async function insertReplyIntoEditor(editor, replyText) {
     console.warn("[ReplyMate Debug] Error getting userName for replacement:", error);
   }
 
-  // Convert text into HTML with <br> to preserve line breaks.
-  const html = safeText
-    .split("\n")
-    .map((line) => {
-      if (line === "") return "<br>";
-      return line
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-    })
-    .join("<br>");
+  // Normalize: collapse 3+ consecutive newlines to 2 (prevents excessive blank lines from model)
+  const normalized = safeText.replace(/\n{3,}/g, "\n\n");
+  // Convert text into HTML: each \n → one <br> (no double conversion)
+  const html = normalized
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
 
   editor.focus();
   editor.innerHTML = html;
