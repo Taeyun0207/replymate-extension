@@ -290,6 +290,10 @@ app.get("/", (req, res) => {
   res.send("ReplyMate backend is running.");
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 // Debug: test Supabase connection (check Render logs)
 app.get("/api/db-check", async (req, res) => {
   try {
@@ -488,53 +492,100 @@ ${additionalInstruction ? `- Additional instruction/information (PRIORITY—use 
     const contextBasedSystemPrompt =
       "You are an expert at writing natural, human-sounding email replies. Your goal is to sound like a real person—warm when appropriate, concise when appropriate, never robotic or generic. When the user provides additional instruction/information, weave it naturally into flowing prose—never output as a list or bullet points. The reply should feel equally natural with or without additional info. CRITICAL: Reply in the SAME LANGUAGE as the email. If the email is in Korean, reply in Korean. If in Japanese, reply in Japanese. If in Spanish, reply in Spanish. If in English or another language, reply in that language. Match the register and formality of the incoming message. ANTI-HALLUCINATION: Never invent facts. If the sender asks for a date, time, price, location, URL, name, quantity, or any detail not in the email, use a placeholder in []. PLACEHOLDER RULE: Placeholders must be in the user's language setting (see prompt). GREETING RULE: Use sender name in this order—1) signature, 2) body, 3) From field, 4) neutral (Hi,/Hello,). Never guess. Prioritize natural, idiomatic phrasing over literal translation. Avoid AI-sounding phrases: no 'I'd be happy to help,' 'Please don't hesitate to reach out,' or similar clichés unless they genuinely fit the context.";
 
+    const useStream = req.query.stream === "true";
+
     try {
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: contextBasedSystemPrompt,
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 350,
-      });
+      if (useStream) {
+        // Streaming: SSE response
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.flushHeaders();
 
-      const reply = completion.choices?.[0]?.message?.content?.trim();
+        const stream = await openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+          messages: [
+            { role: "system", content: contextBasedSystemPrompt },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.7,
+          max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 500,
+          stream: true,
+        });
 
-      if (!reply) {
-        return res.status(500).json({ error: "OpenAI returned an empty reply." });
+        let fullReply = "";
+        for await (const chunk of stream) {
+          const content = chunk.choices?.[0]?.delta?.content;
+          if (content) {
+            fullReply += content;
+            res.write(`data: ${JSON.stringify({ type: "chunk", text: content })}\n\n`);
+          }
+        }
+
+        await recordUsage(userId);
+        const updatedUsage = await checkUsageLimit(userId);
+        res.write(`data: ${JSON.stringify({
+          type: "done",
+          usage: {
+            plan: updatedUsage.plan,
+            used: updatedUsage.used,
+            limit: updatedUsage.limit,
+            remaining: updatedUsage.remaining,
+            topupRemaining: updatedUsage.topupRemaining ?? 0,
+            cancelScheduled: updatedUsage.cancelScheduled,
+            periodEndDate: updatedUsage.periodEndDate,
+            nextResetAt: updatedUsage.nextResetAt ?? null,
+          },
+        })}\n\n`);
+        res.end();
+      } else {
+        // Non-streaming: JSON response
+        const completion = await openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+          messages: [
+            { role: "system", content: contextBasedSystemPrompt },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.7,
+          max_tokens: parseInt(process.env.OPENAI_MAX_TOKENS, 10) || 500,
+        });
+
+        const reply = completion.choices?.[0]?.message?.content?.trim();
+
+        if (!reply) {
+          return res.status(500).json({ error: "OpenAI returned an empty reply." });
+        }
+
+        await recordUsage(userId);
+        const updatedUsage = await checkUsageLimit(userId);
+
+        res.json({
+          reply,
+          usage: {
+            plan: updatedUsage.plan,
+            used: updatedUsage.used,
+            limit: updatedUsage.limit,
+            remaining: updatedUsage.remaining,
+            topupRemaining: updatedUsage.topupRemaining ?? 0,
+            cancelScheduled: updatedUsage.cancelScheduled,
+            periodEndDate: updatedUsage.periodEndDate,
+            nextResetAt: updatedUsage.nextResetAt ?? null,
+          },
+        });
       }
-
-      await recordUsage(userId);
-
-      const updatedUsage = await checkUsageLimit(userId);
-
-      res.json({
-        reply,
-        usage: {
-          plan: updatedUsage.plan,
-          used: updatedUsage.used,
-          limit: updatedUsage.limit,
-          remaining: updatedUsage.remaining,
-          topupRemaining: updatedUsage.topupRemaining ?? 0,
-          cancelScheduled: updatedUsage.cancelScheduled,
-          periodEndDate: updatedUsage.periodEndDate,
-          nextResetAt: updatedUsage.nextResetAt ?? null,
-        },
-      });
     } catch (error) {
       const errMsg = error?.message || String(error);
       console.error("OpenAI generation error:", errMsg);
-      res.status(500).json({
-        error: "Failed to generate AI reply.",
-        detail: errMsg,
-      });
+      if (useStream && res.headersSent) {
+        res.write(`data: ${JSON.stringify({ type: "error", error: errMsg })}\n\n`);
+        res.end();
+      } else {
+        res.status(500).json({
+          error: "Failed to generate AI reply.",
+          detail: errMsg,
+        });
+      }
     }
   } catch (error) {
     console.error("Generate reply error:", error);

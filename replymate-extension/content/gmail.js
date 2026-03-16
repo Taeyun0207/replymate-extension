@@ -63,7 +63,8 @@ const REPLYMATE_CONFIG = {
     baseUrl: "https://replymate-backend-bot8.onrender.com",
     endpoints: {
       usage: "/usage",
-      generate: "/generate-reply"
+      generate: "/generate-reply",
+      generateStream: "/generate-reply?stream=true"
     },
     upgradeUrl: "https://replymate.ai/upgrade"
   },
@@ -496,6 +497,110 @@ async function updateUsageDisplay(usageDisplay) {
     if (usageDisplay) {
       usageDisplay.textContent = formatUsageDisplay("free", 0, 0, language);
     }
+  }
+}
+
+// Convert plain text to HTML for editor display (used during streaming).
+function textToEditorHtml(text) {
+  if (typeof text !== "string") return "";
+  const normalized = text.replace(/\n{3,}/g, "\n\n");
+  return normalized
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+}
+
+// Update editor with streaming text (no [Your Name] replacement - done at end).
+function updateEditorWithStreamingText(editor, text) {
+  if (!(editor instanceof HTMLElement)) return;
+  const html = textToEditorHtml(text);
+  editor.innerHTML = html;
+  editor.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// Generate AI reply with streaming - text appears as it generates.
+async function generateAIReplyStreaming(payload, editor) {
+  try {
+    const token = await getAccessToken();
+    if (!token) return null;
+
+    if (!payload?.latestMessage || typeof payload.latestMessage !== "string") {
+      console.error("[ReplyMate] Invalid payload for streaming");
+      return null;
+    }
+
+    const url = `${REPLYMATE_CONFIG.backend.baseUrl}${REPLYMATE_CONFIG.backend.endpoints.generateStream}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const language = await getCurrentLanguage();
+
+    if (!response.ok) {
+      const text = await response.text();
+      let errorData = {};
+      try { errorData = JSON.parse(text) || {}; } catch (_) {}
+      if (response.status === 401) {
+        showReplyMateMessage(getTranslation("signInRequired", language));
+        return null;
+      }
+      if (response.status === 403 || errorData.error === "usage_limit_exceeded") {
+        showReplyMateMessage(getTranslation("monthlyLimitReached", language));
+        const usageData = await getUsageData();
+        if (usageData) {
+          usageData.remaining = 0;
+          await updateUsageDisplayFromData(usageData);
+        }
+        return null;
+      }
+      const msg = errorData.error || errorData.detail || `Request failed (${response.status})`;
+      showReplyMateMessage(getTranslation("replyGenerationFailed", language) + msg);
+      return null;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullReply = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === "chunk" && data.text) {
+              fullReply += data.text;
+              if (editor) updateEditorWithStreamingText(editor, fullReply);
+            } else if (data.type === "done" && data.usage) {
+              return { reply: fullReply, usage: data.usage };
+            } else if (data.type === "error") {
+              showReplyMateMessage(getTranslation("replyGenerationFailed", language) + (data.error || ""));
+              return null;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    return { reply: fullReply, usage: null };
+  } catch (error) {
+    const language = await getCurrentLanguage();
+    const msg = error?.message || "Network error";
+    console.error("[ReplyMate] Streaming error:", msg);
+    showReplyMateMessage(getTranslation("replyGenerationFailed", language) + msg);
+    return null;
   }
 }
 
@@ -1294,9 +1399,11 @@ Length: ${finalLength}
     console.log("[ReplyMate Auto] Final prompt used for AI generation:", payload.lengthInstruction);
     console.log("[ReplyMate Anti-Hallucination] Anti-hallucination rules applied to prevent fact fabrication");
 
-    console.log("[ReplyMate DEBUG] Sending API request with payload:", payload);
-    const replyData = await generateAIReply(payload);
-    console.log("[ReplyMate DEBUG] API response received:", replyData);
+    console.log("[ReplyMate DEBUG] Sending API request with payload (streaming):", payload);
+    editor.focus();
+    editor.innerHTML = "";
+    const replyData = await generateAIReplyStreaming(payload, editor);
+    console.log("[ReplyMate DEBUG] Streaming complete:", replyData ? "success" : "failed");
     
     if (!replyData) {
       console.log("[ReplyMate DEBUG] No reply data received, showing error");
@@ -1305,16 +1412,11 @@ Length: ${finalLength}
       return;
     }
 
-    console.log("[ReplyMate DEBUG] Reply text to insert:", replyData.reply);
-    console.log("[ReplyMate DEBUG] Target editor element:", editor);
-    console.log("[ReplyMate DEBUG] Editor is contenteditable:", editor.contentEditable);
-    console.log("[ReplyMate DEBUG] Editor current content:", editor.innerHTML);
-    
     try {
       await insertReplyIntoEditor(editor, replyData.reply);
-      console.log("[ReplyMate DEBUG] Reply inserted successfully");
+      console.log("[ReplyMate DEBUG] Reply finalized with [Your Name] replacement");
     } catch (error) {
-      console.error("[ReplyMate DEBUG] Error inserting reply:", error);
+      console.error("[ReplyMate DEBUG] Error finalizing reply:", error);
     }
     
     await setReplyMateButtonState(button, "idle");
@@ -2247,7 +2349,9 @@ Length: ${finalLength}
 
         console.log("[ReplyMate payload]", payload);
   
-        const replyData = await generateAIReply(payload);
+        replyEditor.focus();
+        replyEditor.innerHTML = "";
+        const replyData = await generateAIReplyStreaming(payload, replyEditor);
   
         if (!replyData) {
           if (sourceButton) {
