@@ -520,13 +520,28 @@ function updateEditorWithStreamingText(editor, text) {
 }
 
 // Generate AI reply with streaming - text appears as it generates.
-async function generateAIReplyStreaming(payload, editor) {
+// Optional callbacks: onFirstChunk (when first text appears), onComplete (when done or error).
+async function generateAIReplyStreaming(payload, editor, callbacks = {}) {
+  const { onFirstChunk, onComplete } = callbacks;
+  let firstChunkFired = false;
+
+  const fireOnFirstChunk = () => {
+    if (!firstChunkFired && onFirstChunk) {
+      firstChunkFired = true;
+      onFirstChunk();
+    }
+  };
+
   try {
     const token = await getAccessToken();
-    if (!token) return null;
+    if (!token) {
+      if (onComplete) onComplete();
+      return null;
+    }
 
     if (!payload?.latestMessage || typeof payload.latestMessage !== "string") {
       console.error("[ReplyMate] Invalid payload for streaming");
+      if (onComplete) onComplete();
       return null;
     }
 
@@ -548,6 +563,7 @@ async function generateAIReplyStreaming(payload, editor) {
       try { errorData = JSON.parse(text) || {}; } catch (_) {}
       if (response.status === 401) {
         showReplyMateMessage(getTranslation("signInRequired", language));
+        if (onComplete) onComplete();
         return null;
       }
       if (response.status === 403 || errorData.error === "usage_limit_exceeded") {
@@ -557,10 +573,12 @@ async function generateAIReplyStreaming(payload, editor) {
           usageData.remaining = 0;
           await updateUsageDisplayFromData(usageData);
         }
+        if (onComplete) onComplete();
         return null;
       }
       const msg = errorData.error || errorData.detail || `Request failed (${response.status})`;
       showReplyMateMessage(getTranslation("replyGenerationFailed", language) + msg);
+      if (onComplete) onComplete();
       return null;
     }
 
@@ -581,12 +599,15 @@ async function generateAIReplyStreaming(payload, editor) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.type === "chunk" && data.text) {
+              fireOnFirstChunk();
               fullReply += data.text;
               if (editor) updateEditorWithStreamingText(editor, fullReply);
             } else if (data.type === "done" && data.usage) {
+              if (onComplete) onComplete();
               return { reply: fullReply, usage: data.usage };
             } else if (data.type === "error") {
               showReplyMateMessage(getTranslation("replyGenerationFailed", language) + (data.error || ""));
+              if (onComplete) onComplete();
               return null;
             }
           } catch (_) {}
@@ -594,12 +615,14 @@ async function generateAIReplyStreaming(payload, editor) {
       }
     }
 
+    if (onComplete) onComplete();
     return { reply: fullReply, usage: null };
   } catch (error) {
     const language = await getCurrentLanguage();
     const msg = error?.message || "Network error";
     console.error("[ReplyMate] Streaming error:", msg);
     showReplyMateMessage(getTranslation("replyGenerationFailed", language) + msg);
+    if (onComplete) onComplete();
     return null;
   }
 }
@@ -1223,6 +1246,7 @@ async function createReplyMateButton() {
   
   // Create a container for both button and input
   const container = document.createElement("div");
+  container.className = "replymate-ui-container";
   container.style.display = "inline-flex";
   container.style.alignItems = "center";
   container.style.gap = "8px";
@@ -1402,11 +1426,27 @@ Length: ${finalLength}
     console.log("[ReplyMate DEBUG] Sending API request with payload (streaming):", payload);
     editor.focus();
     editor.innerHTML = "";
-    const replyData = await generateAIReplyStreaming(payload, editor);
+
+    const hideUI = () => {
+      document.querySelectorAll(".replymate-ui-container").forEach((el) => {
+        el.style.display = "none";
+      });
+    };
+    const showUI = () => {
+      document.querySelectorAll(".replymate-ui-container").forEach((el) => {
+        el.style.display = "inline-flex";
+      });
+    };
+
+    const replyData = await generateAIReplyStreaming(payload, editor, {
+      onFirstChunk: hideUI,
+      onComplete: showUI,
+    });
     console.log("[ReplyMate DEBUG] Streaming complete:", replyData ? "success" : "failed");
     
     if (!replyData) {
       console.log("[ReplyMate DEBUG] No reply data received, showing error");
+      showUI();
       await setReplyMateButtonState(button, "error");
       setTimeout(async () => await setReplyMateButtonState(button, "idle"), 2000);
       return;
@@ -2351,9 +2391,25 @@ Length: ${finalLength}
   
         replyEditor.focus();
         replyEditor.innerHTML = "";
-        const replyData = await generateAIReplyStreaming(payload, replyEditor);
+
+        const hideUI = () => {
+          document.querySelectorAll(".replymate-ui-container").forEach((el) => {
+            el.style.display = "none";
+          });
+        };
+        const showUI = () => {
+          document.querySelectorAll(".replymate-ui-container").forEach((el) => {
+            el.style.display = "inline-flex";
+          });
+        };
+
+        const replyData = await generateAIReplyStreaming(payload, replyEditor, {
+          onFirstChunk: hideUI,
+          onComplete: showUI,
+        });
   
         if (!replyData) {
+          showUI();
           if (sourceButton) {
             await setReplyMateButtonState(sourceButton, "error");
             setTimeout(async () => await setReplyMateButtonState(sourceButton, "idle"), 2000);
