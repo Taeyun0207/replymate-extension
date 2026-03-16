@@ -1,0 +1,11 @@
+# Exclude from Chrome Web Store zip
+node_modules/
+.git/
+.gitignore
+.zipignore
+package.json
+package-lock.json
+*.md
+.DS_Store
+Thumbs.db
+my-project-page-1.png
