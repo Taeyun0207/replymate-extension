@@ -38,7 +38,8 @@
       "js": [
         "lib/auth-config.js",
         "lib/auth-shared.js",
-        "content/gmail.js"
+        "content/gmail.js",
+        "content/translation.js"
       ],
       "all_frames": true
     }

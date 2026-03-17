@@ -306,6 +306,39 @@ app.get("/api/db-check", async (req, res) => {
   }
 });
 
+// Translate text (requires auth) - lightweight, no usage limit
+app.post("/translate", requireAuth, async (req, res) => {
+  try {
+    const { text, targetLang } = req.body || {};
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ error: "text is required and must be a string" });
+    }
+    const target = (targetLang || "en").toLowerCase();
+    const validTargets = ["en", "ko", "ja", "es"];
+    if (!validTargets.includes(target)) {
+      return res.status(400).json({ error: "targetLang must be one of: en, ko, ja, es" });
+    }
+    const langNames = { en: "English", ko: "Korean", ja: "Japanese", es: "Spanish" };
+    const completion = await openai.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a translator. Translate the user's text into ${langNames[target]}. Output ONLY the translation, no explanations or quotes. Preserve line breaks and formatting.`
+        },
+        { role: "user", content: text }
+      ],
+      temperature: 0.2,
+      max_tokens: 1000
+    });
+    const translated = completion.choices?.[0]?.message?.content?.trim() || "";
+    res.json({ translated });
+  } catch (error) {
+    console.error("[Translate] Error:", error?.message || error);
+    res.status(500).json({ error: error?.message || "Translation failed" });
+  }
+});
+
 // Get current usage (requires auth)
 app.get("/usage", requireAuth, async (req, res) => {
   try {

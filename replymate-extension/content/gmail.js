@@ -125,7 +125,18 @@ const TRANSLATIONS = {
     invalidResponseFromServer: "Invalid response from server.",
     unexpectedResponseFormat: "Unexpected response format.",
     unableToExtractContent: "Unable to extract email content. Please try refreshing the page.",
-    extensionContextInvalidated: "ReplyMate was updated. Please refresh this page to continue."
+    extensionContextInvalidated: "ReplyMate was updated. Please refresh this page to continue.",
+    translateLatestMessage: "Translate latest message",
+    translateReply: "Translate reply",
+    translateManual: "Translate",
+    translateInputPlaceholder: "Paste text to translate...",
+    alreadyInYourLanguage: "Already in your selected language",
+    noReplyFound: "No reply found. Generate a reply first.",
+    copied: "Copied!",
+    translateClose: "Close",
+    translateCopy: "Copy",
+    translateError: "Translation failed: ",
+    noMessageFound: "No message found in this thread."
   },
   korean: {
     aiReply: "AI Reply",
@@ -152,7 +163,18 @@ const TRANSLATIONS = {
     invalidResponseFromServer: "서버에서 잘못된 응답을 받았습니다.",
     unexpectedResponseFormat: "예상치 못한 응답 형식입니다.",
     unableToExtractContent: "이메일 내용을 추출할 수 없습니다. 페이지를 새로고침해 주세요.",
-    extensionContextInvalidated: "ReplyMate가 업데이트되었습니다. 계속하려면 페이지를 새로고침해 주세요."
+    extensionContextInvalidated: "ReplyMate가 업데이트되었습니다. 계속하려면 페이지를 새로고침해 주세요.",
+    translateLatestMessage: "최신 메시지 번역",
+    translateReply: "답장 번역",
+    translateManual: "번역",
+    translateInputPlaceholder: "번역할 텍스트 붙여넣기...",
+    alreadyInYourLanguage: "선택한 언어와 동일합니다",
+    noReplyFound: "답장을 찾을 수 없습니다. 먼저 답장을 생성하세요.",
+    copied: "복사됨!",
+    translateClose: "닫기",
+    translateCopy: "복사",
+    translateError: "번역 실패: ",
+    noMessageFound: "이 스레드에서 메시지를 찾을 수 없습니다."
   },
   japanese: {
     aiReply: "AI Reply",
@@ -179,7 +201,18 @@ const TRANSLATIONS = {
     invalidResponseFromServer: "サーバーから無効な応答を受け取りました。",
     unexpectedResponseFormat: "予期しない応答形式です。",
     unableToExtractContent: "メールの内容を取得できません。ページを更新してください。",
-    extensionContextInvalidated: "ReplyMateが更新されました。続行するにはページを更新してください。"
+    extensionContextInvalidated: "ReplyMateが更新されました。続行するにはページを更新してください。",
+    translateLatestMessage: "最新メッセージを翻訳",
+    translateReply: "返信を翻訳",
+    translateManual: "翻訳",
+    translateInputPlaceholder: "翻訳するテキストを貼り付け...",
+    alreadyInYourLanguage: "選択した言語と同じです",
+    noReplyFound: "返信が見つかりません。先に返信を生成してください。",
+    copied: "コピーしました！",
+    translateClose: "閉じる",
+    translateCopy: "コピー",
+    translateError: "翻訳に失敗しました: ",
+    noMessageFound: "このスレッドにメッセージがありません。"
   },
   spanish: {
     aiReply: "Respuesta IA",
@@ -206,7 +239,18 @@ const TRANSLATIONS = {
     invalidResponseFromServer: "Respuesta inválida del servidor.",
     unexpectedResponseFormat: "Formato de respuesta inesperado.",
     unableToExtractContent: "No se puede extraer el contenido del correo. Por favor, actualiza la página.",
-    extensionContextInvalidated: "ReplyMate se actualizó. Por favor, actualiza esta página para continuar."
+    extensionContextInvalidated: "ReplyMate se actualizó. Por favor, actualiza esta página para continuar.",
+    translateLatestMessage: "Traducir último mensaje",
+    translateReply: "Traducir respuesta",
+    translateManual: "Traducir",
+    translateInputPlaceholder: "Pega texto para traducir...",
+    alreadyInYourLanguage: "Ya está en tu idioma seleccionado",
+    noReplyFound: "No se encontró respuesta. Genera una respuesta primero.",
+    copied: "¡Copiado!",
+    translateClose: "Cerrar",
+    translateCopy: "Copiar",
+    translateError: "Error de traducción: ",
+    noMessageFound: "No se encontró mensaje en este hilo."
   }
 };
 
