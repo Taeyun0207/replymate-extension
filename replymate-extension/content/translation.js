@@ -22,6 +22,11 @@
   const STORAGE_PANEL_POS = "replymate_translation_panel_pos";
   const STORAGE_TARGET_LANG = "replymate_translation_target_lang";
 
+  let translateAbortController = null;
+  let lastTranslatedSource = "";
+  let lastTranslatedTarget = "";
+  let lastTranslatedResult = "";
+
   /**
    * Strip Gmail UI elements from scraped message (timestamps, buttons, unsubscribe, etc.).
    * Returns only the actual email body for translation.
@@ -127,14 +132,15 @@
   /**
    * Call translation API (non-streaming fallback).
    */
-  async function translateText(text, targetLang) {
+  async function translateText(text, targetLang, signal) {
     const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
     if (!token) throw new Error("Sign in required");
     const targetCode = typeof targetLang === "string" ? mapToTargetCode(targetLang) : mapToTargetCode("english");
     const res = await fetch(`${BACKEND_BASE}/translate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ text, targetLang: targetCode })
+      body: JSON.stringify({ text, targetLang: targetCode }),
+      signal
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Translation failed");
@@ -144,14 +150,15 @@
   /**
    * Stream translation and call onDelta for each chunk. Falls back to non-streaming on error.
    */
-  async function translateTextStream(text, targetLang, onDelta) {
+  async function translateTextStream(text, targetLang, onDelta, signal) {
     const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
     if (!token) throw new Error("Sign in required");
     const targetCode = typeof targetLang === "string" ? mapToTargetCode(targetLang) : mapToTargetCode("english");
     const res = await fetch(`${BACKEND_BASE}/translate-stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ text, targetLang: targetCode })
+      body: JSON.stringify({ text, targetLang: targetCode }),
+      signal
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -206,7 +213,7 @@
     if (!toast) {
       toast = document.createElement("div");
       toast.id = TRANSLATION_TOAST_ID;
-      toast.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#202124;color:#fff;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;z-index:2147483647;opacity:0;transition:opacity 0.25s ease, transform 0.25s ease;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.25);display:flex;align-items:center;gap:8px;";
+      toast.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#202124;color:#fff;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;z-index:2147483647;opacity:0;transition:opacity 0.25s ease, transform 0.25s ease;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.25);display:flex;align-items:center;gap:8px;white-space:pre-line;";
       document.body.appendChild(toast);
     }
     if (withCheck) {
@@ -546,10 +553,14 @@
     setResult(panel, "");
     const input = document.getElementById("replymate-translate-input");
     if (input) input.value = "";
+    lastTranslatedSource = "";
+    lastTranslatedTarget = "";
+    lastTranslatedResult = "";
   }
 
   /**
    * Set result area content.
+   * For streaming: pass text to show incrementally (like reply generation).
    */
   function setResult(panel, text, isError = false, isLoading = false) {
     const el = panel && panel.querySelector("#replymate-translate-result");
@@ -562,6 +573,7 @@
       el.innerHTML = `<span class="replymate-spinner"></span><span>${placeholder}</span>`;
     } else {
       el.textContent = text || "";
+      el.scrollTop = el.scrollHeight;
     }
   }
 
@@ -577,6 +589,21 @@
   }
 
   /**
+   * Enable or disable translate buttons during translation.
+   */
+  function setTranslateButtonsDisabled(panel, disabled) {
+    const ids = ["replymate-translate-latest", "replymate-translate-reply", "replymate-translate-manual"];
+    ids.forEach((id) => {
+      const btn = panel && panel.querySelector(`#${id}`);
+      if (btn) {
+        btn.disabled = disabled;
+        btn.style.opacity = disabled ? "0.6" : "1";
+        btn.style.cursor = disabled ? "not-allowed" : "pointer";
+      }
+    });
+  }
+
+  /**
    * Run translation flow: detect language, skip if same, else translate.
    */
   async function runTranslateFlow(sourceText, panel) {
@@ -589,6 +616,11 @@
     const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
     const targetCode = await getEffectiveTargetCode(panel);
 
+    if (sourceText === lastTranslatedSource && targetCode === lastTranslatedTarget && lastTranslatedResult) {
+      showToast(t("contentSame"));
+      return;
+    }
+
     const detected = detectLanguageForTranslation(sourceText);
     const detectedCode = mapToTargetCode(detected);
     if (detectedCode === targetCode) {
@@ -596,24 +628,43 @@
       return;
     }
 
+    if (translateAbortController) {
+      translateAbortController.abort();
+    }
+    translateAbortController = new AbortController();
+    const signal = translateAbortController.signal;
+
+    setTranslateButtonsDisabled(panel, true);
     const resultEl = panel && panel.querySelector("#replymate-translate-result");
     if (resultEl) resultEl.dataset.placeholder = t("translating");
     setResult(panel, "", false, true);
+
     try {
       try {
         const translated = await translateTextStream(sourceText, targetCode, (partial) => {
           setResult(panel, partial);
-        });
+        }, signal);
         setResult(panel, translated);
+        lastTranslatedSource = sourceText;
+        lastTranslatedTarget = targetCode;
+        lastTranslatedResult = translated;
       } catch (streamErr) {
-        const translated = await translateText(sourceText, targetCode);
+        if (streamErr.name === "AbortError") return;
+        const translated = await translateText(sourceText, targetCode, signal);
         setResult(panel, translated);
+        lastTranslatedSource = sourceText;
+        lastTranslatedTarget = targetCode;
+        lastTranslatedResult = translated;
       }
     } catch (err) {
+      if (err.name === "AbortError") return;
       const msg = err.message || String(err);
       const isLimitReached = msg.includes("translation_limit_reached");
       const displayMsg = isLimitReached ? t("translateLimitReached") : t("translateError") + msg;
       setResult(panel, displayMsg, true);
+    } finally {
+      setTranslateButtonsDisabled(panel, false);
+      translateAbortController = null;
     }
   }
 

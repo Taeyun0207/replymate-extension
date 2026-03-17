@@ -4,7 +4,7 @@ const PLAN_LIMITS = {
   pro_plus: 1000,
 };
 
-const TRANSLATION_LIMIT_FREE = 10;
+const TRANSLATION_LIMIT_FREE = 15;
 
 function getPlanLimit(plan) {
   return PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;

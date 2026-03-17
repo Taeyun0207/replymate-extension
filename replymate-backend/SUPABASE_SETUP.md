@@ -63,7 +63,7 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS period_end_at TIMESTAMPTZ;
 
 ## 2a. Translation usage columns (optional)
 
-For translation limits: free users get 10/day; Pro/Pro+ unlimited.
+For translation limits: free users get 15/day; Pro/Pro+ unlimited.
 
 ```sql
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS translation_used INTEGER DEFAULT 0;

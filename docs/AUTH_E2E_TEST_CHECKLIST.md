@@ -73,7 +73,7 @@
 - Backend: `requireAuth` verifies token, uses `req.userId` for `checkUsageLimit()`.
 
 **Test checklist:**
-- [ ] Popup: after login, usage shows (e.g. "Free Plan · X / 25 replies left")
+- [ ] Popup: after login, usage shows (e.g. "Standard · X / 25 replies left")
 - [ ] Content script: usage display updates after reply generation
 - [ ] 401 from backend → `fetchUsageFromBackend()` returns `null`, no crash
 

@@ -23,7 +23,7 @@
       translateClose: "Close",
       translateCopy: "Copy",
       translateError: "Translation failed: ",
-      translateLimitReached: "Daily translation limit reached (10/day). Upgrade to Pro for unlimited.",
+      translateLimitReached: "You've reached your daily translation limit (15/day).\nUpgrade to Pro for unlimited translations.",
       noMessageFound: "No message found in this thread.",
       noTextToTranslate: "Please paste or enter text to translate.",
       nothingToCopy: "Nothing to copy. Translate something first.",
@@ -32,7 +32,8 @@
       translateResultLabel: "Result",
       translateToLabel: "Translate to",
       systemLanguage: "System Language",
-      translating: "Translating..."
+      translating: "Translating...",
+      contentSame: "Same content.\nNo translation needed."
     },
     korean: {
       aiReply: "AI Reply",
@@ -47,7 +48,7 @@
       translateClose: "닫기",
       translateCopy: "복사",
       translateError: "번역 실패: ",
-      translateLimitReached: "일일 번역 한도(10회)를 모두 사용했습니다. Pro로 업그레이드하면 무제한입니다.",
+      translateLimitReached: "오늘의 번역 한도(15회)를 모두 사용했습니다.\nPro로 업그레이드하면 무제한입니다.",
       noMessageFound: "이 메일에서 내용을 찾을 수 없습니다.",
       noTextToTranslate: "번역할 텍스트를 붙여넣거나 입력해 주세요.",
       nothingToCopy: "복사할 내용이 없습니다. 먼저 번역해 주세요.",
@@ -56,7 +57,8 @@
       translateResultLabel: "번역 결과",
       translateToLabel: "번역 대상 언어",
       systemLanguage: "시스템 언어",
-      translating: "번역 중..."
+      translating: "번역 중...",
+      contentSame: "동일한 내용입니다.\n번역할 필요가 없습니다."
     },
     japanese: {
       aiReply: "AI Reply",
@@ -71,7 +73,7 @@
       translateClose: "閉じる",
       translateCopy: "コピー",
       translateError: "翻訳に失敗しました: ",
-      translateLimitReached: "1日の翻訳上限（10回）に達しました。Proにアップグレードで無制限に。",
+      translateLimitReached: "本日の翻訳上限（15回）に達しました。\nProにアップグレードで無制限に。",
       noMessageFound: "このメールに内容がありません。",
       noTextToTranslate: "翻訳するテキストを貼り付けるか入力してください。",
       nothingToCopy: "コピーする内容がありません。先に翻訳してください。",
@@ -80,7 +82,8 @@
       translateResultLabel: "翻訳結果",
       translateToLabel: "翻訳先",
       systemLanguage: "システム言語",
-      translating: "翻訳中..."
+      translating: "翻訳中...",
+      contentSame: "同じ内容です。\n翻訳の必要はありません。"
     },
     spanish: {
       aiReply: "Respuesta IA",
@@ -95,7 +98,7 @@
       translateClose: "Cerrar",
       translateCopy: "Copiar",
       translateError: "Error de traducción: ",
-      translateLimitReached: "Límite diario de traducción (10/día) alcanzado. Actualiza a Pro para ilimitadas.",
+      translateLimitReached: "Has alcanzado el límite diario (15/día).\nActualiza a Pro para traducciones ilimitadas.",
       noMessageFound: "No hay contenido en este correo.",
       noTextToTranslate: "Pega o escribe texto para traducir.",
       nothingToCopy: "Nada que copiar. Traduce algo primero.",
@@ -104,7 +107,8 @@
       translateResultLabel: "Resultado",
       translateToLabel: "Traducir a",
       systemLanguage: "Idioma del sistema",
-      translating: "Traduciendo..."
+      translating: "Traduciendo...",
+      contentSame: "Mismo contenido.\nNo se necesita traducción."
     }
   };
 

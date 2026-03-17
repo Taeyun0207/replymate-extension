@@ -29,7 +29,7 @@ const TRANSLATIONS = {
     upgradeToProPlus: "Upgrade to Pro+",
     manageSubscription: "Manage Subscription",
     planNames: {
-      free: "Free Plan",
+      free: "Standard",
       pro: "Pro",
       pro_plus: "Pro+"
     },
@@ -47,6 +47,7 @@ const TRANSLATIONS = {
     resetsOn: "Resets on {date}",
     activeUntil: "Active until {date}",
     cancelledActiveUntil: "Cancelled · active until {date}",
+    planCancelled: "Plan Cancelled",
     signingIn: "Signing in...",
     cancelling: "Cancelling...",
     authErrorGeneric: "An error occurred during sign in. Please try again.",
@@ -92,7 +93,7 @@ const TRANSLATIONS = {
     upgradeToProPlus: "Pro+로 업그레이드",
     manageSubscription: "구독 관리",
     planNames: {
-      free: "무료 플랜",
+      free: "Standard",
       pro: "Pro",
       pro_plus: "Pro+"
     },
@@ -110,6 +111,7 @@ const TRANSLATIONS = {
     resetsOn: "리셋일: {date}",
     activeUntil: "{date}까지 사용 가능",
     cancelledActiveUntil: "취소됨 · {date}까지 사용 가능",
+    planCancelled: "플랜 취소됨",
     signingIn: "로그인 중...",
     cancelling: "취소 중...",
     authErrorGeneric: "로그인 중 오류가 발생했습니다. 다시 시도해 주세요.",
@@ -153,7 +155,7 @@ const TRANSLATIONS = {
     upgradeToProPlus: "Pro+にアップグレード",
     manageSubscription: "サブスクリプション管理",
     planNames: {
-      free: "無料プラン",
+      free: "Standard",
       pro: "Pro",
       pro_plus: "Pro+"
     },
@@ -171,6 +173,7 @@ const TRANSLATIONS = {
     resetsOn: "リセット日: {date}",
     activeUntil: "{date}まで利用可能",
     cancelledActiveUntil: "キャンセル済み · {date}まで利用可能",
+    planCancelled: "プランキャンセル",
     signingIn: "サインイン中...",
     cancelling: "キャンセル処理中...",
     authErrorGeneric: "サインイン中にエラーが発生しました。もう一度お試しください。",
@@ -214,7 +217,7 @@ const TRANSLATIONS = {
     upgradeToProPlus: "Actualizar a Pro+",
     manageSubscription: "Administrar suscripción",
     planNames: {
-      free: "Plan gratuito",
+      free: "Standard",
       pro: "Pro",
       pro_plus: "Pro+"
     },
@@ -232,6 +235,7 @@ const TRANSLATIONS = {
     resetsOn: "Se reinicia el {date}",
     activeUntil: "Activo hasta el {date}",
     cancelledActiveUntil: "Cancelado · activo hasta el {date}",
+    planCancelled: "Plan cancelado",
     signingIn: "Iniciando sesión...",
     cancelling: "Cancelando...",
     authErrorGeneric: "Ocurrió un error al iniciar sesión. Por favor, inténtalo de nuevo.",
@@ -362,7 +366,7 @@ function updatePlanUsageDisplay(usageData, language = DEFAULT_LANGUAGE) {
   }
 
   const planTranslations = TRANSLATIONS[language]?.planNames || TRANSLATIONS.english.planNames;
-  const planName = planTranslations[usageData.plan] || planTranslations.free || "Free Plan";
+  const planName = planTranslations[usageData.plan] || planTranslations.free || "Standard";
   const limit = usageData.limit; // Only use backend limit, no fallback
   const remaining = usageData.remaining !== undefined ? usageData.remaining : 0;
   const repliesLeft = getTranslation("repliesLeft", language);
@@ -396,20 +400,25 @@ function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE, cancelScheduled = 
   const locale = language === "korean" ? "ko-KR" : language === "japanese" ? "ja-JP" : language === "spanish" ? "es-ES" : "en-US";
 
   // Plan expiry / reset date: show for all plans (Pro/Pro+ renews; Free resets)
+  // When cancelled: show "Plan Cancelled" only (date is on webpage)
   if (planExpiryEl) {
     let dateToShow = null;
     let textKey = null;
     if (plan === "pro" || plan === "pro_plus") {
-      dateToShow = cancelScheduled && periodEndDate ? periodEndDate : nextResetAt;
-      textKey = cancelScheduled ? "activeUntil" : "renewsOn";
+      if (cancelScheduled) {
+        textKey = "planCancelled";
+      } else {
+        dateToShow = nextResetAt;
+        textKey = "renewsOn";
+      }
     } else if (plan === "free" && nextResetAt) {
       dateToShow = nextResetAt;
       textKey = "resetsOn";
     }
-    if (dateToShow && textKey) {
-      const endDate = new Date(dateToShow);
-      const dateStr = endDate.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
-      planExpiryEl.textContent = getTranslation(textKey, language).replace("{date}", dateStr);
+    if (textKey) {
+      planExpiryEl.textContent = dateToShow
+        ? getTranslation(textKey, language).replace("{date}", new Date(dateToShow).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" }))
+        : getTranslation(textKey, language);
       planExpiryEl.style.display = "block";
     } else {
       planExpiryEl.style.display = "none";
@@ -434,31 +443,8 @@ function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE, cancelScheduled = 
     topupLabel.textContent = getTranslation("topUpReplies", language);
   }
 
-  // Cancel section: show for pro/pro_plus; if cancelled, show "Cancelled · active until {date}" + "Keep subscription"
-  if (cancelSection && cancelLink && keepLink) {
-    if (plan === "pro" || plan === "pro_plus") {
-      cancelSection.style.display = "block";
-      if (cancelScheduled && periodEndDate) {
-        const endDate = new Date(periodEndDate);
-        const dateStr = endDate.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
-        cancelLink.textContent = getTranslation("cancelledActiveUntil", language).replace("{date}", dateStr);
-        cancelLink.setAttribute("data-cancel-scheduled", "true");
-        cancelLink.style.pointerEvents = "none";
-        cancelLink.style.opacity = "0.8";
-        keepLink.textContent = getTranslation("keepSubscription", language);
-        keepLink.style.display = "";
-      } else {
-        cancelLink.textContent = getTranslation("cancelSubscription", language);
-        cancelLink.removeAttribute("data-cancel-scheduled");
-        cancelLink.style.pointerEvents = "";
-        cancelLink.style.opacity = "";
-        keepLink.style.display = "none";
-      }
-    } else {
-      cancelSection.style.display = "none";
-      keepLink.style.display = "none";
-    }
-  }
+  // Cancel section: always hidden - subscription management is via webpage only
+  if (cancelSection) cancelSection.style.display = "none";
 
   console.log(`[ReplyMate] Rendering billing UI for plan: ${plan}`);
 
@@ -714,7 +700,7 @@ async function updateLoginUI(language = DEFAULT_LANGUAGE) {
     if (planUsageEl) planUsageEl.style.display = "";
     if (upgradeBox) upgradeBox.style.display = "";
     if (topupSection) topupSection.style.display = "";
-    if (cancelSection) cancelSection.style.display = "";
+    if (cancelSection) cancelSection.style.display = "none";
   } else {
     notSignedIn.style.display = "block";
     signedIn.style.display = "none";
