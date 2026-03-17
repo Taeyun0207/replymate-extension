@@ -31,7 +31,8 @@
     "https://mail.google.com/*",
     "https://replymate-backend-bot8.onrender.com/*",
     "https://*.supabase.co/*",
-    "https://accounts.google.com/*"
+    "https://accounts.google.com/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background/service-worker.js"

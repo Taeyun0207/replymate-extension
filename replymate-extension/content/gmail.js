@@ -66,7 +66,7 @@ const REPLYMATE_CONFIG = {
       generate: "/generate-reply",
       generateStream: "/generate-reply?stream=true"
     },
-    upgradeUrl: "https://replymate.ai/upgrade"
+    upgradeUrl: (typeof REPLYMATE_UPGRADE_URL !== "undefined" ? REPLYMATE_UPGRADE_URL : "https://replymate.ai/upgrade")
   },
   // UI configuration
   ui: {
@@ -119,6 +119,7 @@ const TRANSLATIONS = {
     instructionPlaceholder: "Additional details (optional, e.g. date, time, location)",
     upgradeToPro: "Upgrade to Pro",
     upgradeToProPlus: "Upgrade to Pro+",
+    manageSubscription: "Manage Subscription",
     enjoyReplyMate: "Enjoy ReplyMate!",
     currentPlan: "Current Plan: ",
     replyGenerationFailed: "Reply generation failed: ",
@@ -166,6 +167,7 @@ const TRANSLATIONS = {
     instructionPlaceholder: "추가 정보 입력 (선택 사항, 예: 날짜, 시간)",
     upgradeToPro: "Pro로 업그레이드",
     upgradeToProPlus: "Pro+로 업그레이드",
+    manageSubscription: "구독 관리",
     enjoyReplyMate: "ReplyMate를 즐겨보세요!",
     currentPlan: "현재 플랜: ",
     replyGenerationFailed: "답장 생성 실패: ",
@@ -213,6 +215,7 @@ const TRANSLATIONS = {
     instructionPlaceholder: "追加情報（任意：日付、時間 など）",
     upgradeToPro: "Proにアップグレード",
     upgradeToProPlus: "Pro+にアップグレード",
+    manageSubscription: "サブスクリプション管理",
     enjoyReplyMate: "ReplyMateをお楽しみください！",
     currentPlan: "現在のプラン: ",
     replyGenerationFailed: "返信の生成に失敗しました: ",
@@ -260,6 +263,7 @@ const TRANSLATIONS = {
     instructionPlaceholder: "Detalles adicionales (opcional, ej. fecha, hora, ubicación)",
     upgradeToPro: "Actualizar a Pro",
     upgradeToProPlus: "Actualizar a Pro+",
+    manageSubscription: "Gestionar suscripción",
     enjoyReplyMate: "¡Disfruta ReplyMate!",
     currentPlan: "Plan actual: ",
     replyGenerationFailed: "Error al generar la respuesta: ",
@@ -505,45 +509,14 @@ async function updateUsageDisplayFromData(usageData) {
     display.textContent = formattedText;
   });
   
-  // Update all upgrade UI containers based on current plan and remaining replies
+  // Update all upgrade UI containers - show Manage Subscription
   const upgradeContainers = document.querySelectorAll(".replymate-upgrade-container");
   upgradeContainers.forEach(container => {
     if (container) {
-      // Clear existing upgrade links
       container.innerHTML = "";
       container.style.display = "flex";
-
-      // 남은 리플라이가 0일 때만 업그레이드 박스 표시
-      if (remaining <= 0) {
-        // Re-render upgrade UI based on current plan
-        if (plan === 'pro_plus') {
-          // Pro Plus plan - show enjoy message
-          const enjoyText = document.createElement("div");
-          enjoyText.style.fontSize = "11px";
-          enjoyText.style.color = "#188038";
-          enjoyText.style.fontWeight = "600";
-          enjoyText.textContent = getTranslation("enjoyReplyMate", language);
-          container.appendChild(enjoyText);
-          console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro Plus plan (enjoy message)");
-        } else if (plan === 'pro') {
-          // Pro plan - show upgrade to Pro Plus only
-          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-          container.appendChild(proPlusUpgradeLink);
-          console.log("[ReplyMate] Gmail UI - Billing UI updated: Pro plan (upgrade to Pro Plus available)");
-        } else {
-          // Free plan - show both Pro and Pro Plus upgrades
-          const proUpgradeLink = createUpgradeLink("pro", language);
-          const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-          
-          container.appendChild(proUpgradeLink);
-          container.appendChild(proPlusUpgradeLink);
-          console.log("[ReplyMate] Gmail UI - Billing UI updated: Free plan (upgrades to Pro and Pro Plus available)");
-        }
-      } else {
-        // 남은 리플라이가 있으면 업그레이드 박스 숨기기 (빈 상태로 유지)
-        container.style.display = "none";
-        console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden (replies remaining)");
-      }
+      const manageLink = createManageSubscriptionLink(language);
+      container.appendChild(manageLink);
     }
   });
   
@@ -1601,54 +1574,15 @@ Length: ${finalLength}
   upgradeContainer.style.gap = "8px";
   upgradeContainer.style.alignItems = "center";
   
-  // Get current usage data to determine which upgrade options to show
   (async () => {
     try {
       if (!(await isLoggedIn())) {
         upgradeContainer.style.display = "none";
         return;
       }
-      const usageData = await getUsageData();
-      const currentPlan = usageData?.plan || 'free';
-      const remaining = usageData?.remaining ?? 0;
       const language = await getCurrentLanguage();
-      
-      console.log(`[ReplyMate] Gmail UI - Current plan from /usage: ${currentPlan}, remaining: ${remaining}`);
-      console.log(`[ReplyMate] Gmail UI - Rendering billing UI for plan: ${currentPlan}`);
-      
-      // 남은 리플라이가 0일 때만 업그레이드 박스 표시
-      if (remaining <= 0) {
-        if (currentPlan === 'pro_plus') {
-          // Pro Plus plan - show current plan only
-          const currentPlanText = document.createElement("div");
-          currentPlanText.style.fontSize = "11px";
-          currentPlanText.style.color = "#188038";
-          currentPlanText.style.fontWeight = "600";
-          const planNames = TRANSLATIONS[language]?.planNames || TRANSLATIONS.english.planNames;
-          currentPlanText.textContent = getTranslation("currentPlan", language) + (planNames.pro_plus || "Pro+");
-          upgradeContainer.appendChild(currentPlanText);
-          console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro Plus plan (no upgrades)");
-        } else {
-          // Free or Pro plan - show upgrade options horizontally
-          if (currentPlan === 'free') {
-            // Free plan - show both Pro and Pro Plus upgrades side by side
-            const proUpgradeLink = createUpgradeLink("pro", language);
-            const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-            
-            upgradeContainer.appendChild(proUpgradeLink);
-            upgradeContainer.appendChild(proPlusUpgradeLink);
-            console.log("[ReplyMate] Gmail UI - Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
-          } else if (currentPlan === 'pro') {
-            // Pro plan - show upgrade to Pro Plus only (centered)
-            const proPlusUpgradeLink = createUpgradeLink("pro_plus", language);
-            upgradeContainer.appendChild(proPlusUpgradeLink);
-            console.log("[ReplyMate] Gmail UI - Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
-          }
-        }
-      } else {
-        // 남은 리플라이가 있으면 업그레이드 박스 숨기기 (빈 상태로 유지)
-        console.log("[ReplyMate] Gmail UI - Upgrade boxes hidden in initial render (replies remaining)");
-      }
+      const manageLink = createManageSubscriptionLink(language);
+      upgradeContainer.appendChild(manageLink);
     } catch (error) {
       console.error("[ReplyMate] Failed to load usage for upgrade UI:", error);
       upgradeContainer.style.display = "none";
@@ -1660,99 +1594,43 @@ Length: ${finalLength}
   return container;
 }
 
-// Helper function to create upgrade link
-function createUpgradeLink(targetPlan, language) {
-  const upgradeLink = document.createElement("a");
-  upgradeLink.className = "replymate-upgrade-link";
-  upgradeLink.href = "#";
-  
-  // Check if Gmail is in dark mode
-  const isDarkMode = document.documentElement.classList.contains('dark') || 
-                     document.body.classList.contains('dark') ||
-                     window.matchMedia('(prefers-color-scheme: dark)').matches;
-  
-  // Set text based on target plan
-  if (targetPlan === 'pro') {
-    upgradeLink.textContent = getTranslation("upgradeToPro", language);
-    upgradeLink.style.fontSize = "10px";
-    upgradeLink.style.textDecoration = "none";
-    upgradeLink.style.display = "inline-block";
-    upgradeLink.style.padding = "3px 6px";
-    upgradeLink.style.border = "1px solid #EFE8FF";
-    upgradeLink.style.borderRadius = "3px";
-    upgradeLink.style.backgroundColor = "#EFE8FF";
-    upgradeLink.style.color = "#000000";
-    upgradeLink.style.textAlign = "center";
-    upgradeLink.style.fontWeight = "500";
-    upgradeLink.style.transition = "all 0.2s ease";
-    upgradeLink.style.whiteSpace = "nowrap";
-    upgradeLink.style.lineHeight = "1.2";
-    
-    // Add hover effect for Pro button
-    upgradeLink.addEventListener("mouseenter", () => {
-      upgradeLink.style.backgroundColor = "#D6C5F0";
-      upgradeLink.style.textDecoration = "none";
-      upgradeLink.style.borderColor = "#D6C5F0";
-    });
-    
-    upgradeLink.addEventListener("mouseleave", () => {
-      upgradeLink.style.backgroundColor = "#EFE8FF";
-      upgradeLink.style.textDecoration = "none";
-      upgradeLink.style.borderColor = "#EFE8FF";
-    });
-  } else if (targetPlan === 'pro_plus') {
-    upgradeLink.textContent = getTranslation("upgradeToProPlus", language);
-    upgradeLink.style.fontSize = "10px";
-    upgradeLink.style.textDecoration = "none";
-    upgradeLink.style.display = "inline-block";
-    upgradeLink.style.padding = "3px 6px";
-    upgradeLink.style.border = "1px solid #FFFF99";
-    upgradeLink.style.borderRadius = "3px";
-    upgradeLink.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%)";
-    upgradeLink.style.color = "#2C1810";
-    upgradeLink.style.textAlign = "center";
-    upgradeLink.style.fontWeight = "600";
-    upgradeLink.style.boxShadow = "0 2px 4px rgba(212, 175, 55, 0.3)";
-    upgradeLink.style.transition = "all 0.2s ease";
-    upgradeLink.style.whiteSpace = "nowrap";
-    upgradeLink.style.lineHeight = "1.2";
-    
-    // Add hover effect for Pro Plus button (lighter)
-    upgradeLink.addEventListener("mouseenter", () => {
-      upgradeLink.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFED4E 100%)";
-      upgradeLink.style.textDecoration = "none";
-      upgradeLink.style.boxShadow = "0 4px 8px rgba(212, 175, 55, 0.4)";
-      upgradeLink.style.transform = "translateY(-1px)";
-    });
-    
-    upgradeLink.addEventListener("mouseleave", () => {
-      upgradeLink.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%)";
-      upgradeLink.style.textDecoration = "none";
-      upgradeLink.style.boxShadow = "0 2px 4px rgba(212, 175, 55, 0.3)";
-      upgradeLink.style.transform = "translateY(0px)";
-    });
-  }
-  
-  upgradeLink.addEventListener("click", async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    console.log(`[ReplyMate] Gmail UI - Target plan passed to Stripe checkout: ${targetPlan}`);
-    
-    // Use background service worker for Stripe checkout
-    try {
-      chrome.runtime.sendMessage({
-        type: "CREATE_STRIPE_CHECKOUT",
-        targetPlan: targetPlan
-      });
-    } catch (error) {
-      console.error("[ReplyMate] Failed to trigger Stripe checkout:", error);
-      // Fallback to original upgrade page
-      window.open(REPLYMATE_CONFIG.backend.upgradeUrl, "_blank");
-    }
+// Helper function to create Manage Subscription link (opens upgrade page) - Pro+ gold styling
+function createManageSubscriptionLink(language) {
+  const link = document.createElement("a");
+  link.className = "replymate-upgrade-link";
+  link.href = REPLYMATE_CONFIG.backend.upgradeUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = getTranslation("manageSubscription", language);
+  link.style.fontSize = "10px";
+  link.style.textDecoration = "none";
+  link.style.display = "inline-block";
+  link.style.padding = "3px 6px";
+  link.style.border = "1px solid #FFFF99";
+  link.style.borderRadius = "3px";
+  link.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%)";
+  link.style.color = "#2C1810";
+  link.style.textAlign = "center";
+  link.style.fontWeight = "600";
+  link.style.boxShadow = "0 2px 4px rgba(212, 175, 55, 0.3)";
+  link.style.transition = "all 0.2s ease";
+  link.style.whiteSpace = "nowrap";
+  link.style.lineHeight = "1.2";
+  link.addEventListener("mouseenter", () => {
+    link.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFED4E 100%)";
+    link.style.boxShadow = "0 4px 8px rgba(212, 175, 55, 0.4)";
+    link.style.transform = "translateY(-1px)";
   });
-  
-  return upgradeLink;
+  link.addEventListener("mouseleave", () => {
+    link.style.background = "linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%)";
+    link.style.boxShadow = "0 2px 4px rgba(212, 175, 55, 0.3)";
+    link.style.transform = "translateY(0px)";
+  });
+  link.addEventListener("click", (e) => {
+    e.stopPropagation();
+    window.open(REPLYMATE_CONFIG.backend.upgradeUrl, "_blank");
+  });
+  return link;
 }
 
 // Insert the provided reply text into a Gmail rich-text editor (contenteditable).

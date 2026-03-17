@@ -27,7 +27,7 @@ const TRANSLATIONS = {
     enjoyReplyMate: "Enjoy your ReplyMate!",
     upgradeToPro: "Upgrade to Pro",
     upgradeToProPlus: "Upgrade to Pro+",
-    manageSubscription: "Manage subscription",
+    manageSubscription: "Manage Subscription",
     planNames: {
       free: "Free Plan",
       pro: "Pro",
@@ -44,6 +44,7 @@ const TRANSLATIONS = {
     cancelError: "Failed to cancel subscription.",
     currentPlan: "Current Plan: ",
     renewsOn: "Renews on {date}",
+    resetsOn: "Resets on {date}",
     activeUntil: "Active until {date}",
     cancelledActiveUntil: "Cancelled · active until {date}",
     signingIn: "Signing in...",
@@ -106,6 +107,7 @@ const TRANSLATIONS = {
     cancelError: "구독 취소에 실패했습니다.",
     currentPlan: "현재 플랜: ",
     renewsOn: "다음 갱신일: {date}",
+    resetsOn: "리셋일: {date}",
     activeUntil: "{date}까지 사용 가능",
     cancelledActiveUntil: "취소됨 · {date}까지 사용 가능",
     signingIn: "로그인 중...",
@@ -166,6 +168,7 @@ const TRANSLATIONS = {
     cancelError: "キャンセルに失敗しました。",
     currentPlan: "現在のプラン: ",
     renewsOn: "更新日: {date}",
+    resetsOn: "リセット日: {date}",
     activeUntil: "{date}まで利用可能",
     cancelledActiveUntil: "キャンセル済み · {date}まで利用可能",
     signingIn: "サインイン中...",
@@ -226,6 +229,7 @@ const TRANSLATIONS = {
     cancelError: "Error al cancelar la suscripción.",
     currentPlan: "Plan actual: ",
     renewsOn: "Renueva el {date}",
+    resetsOn: "Se reinicia el {date}",
     activeUntil: "Activo hasta el {date}",
     cancelledActiveUntil: "Cancelado · activo hasta el {date}",
     signingIn: "Iniciando sesión...",
@@ -374,8 +378,7 @@ function updatePlanUsageDisplay(usageData, language = DEFAULT_LANGUAGE) {
 
 // Update upgrade link based on current plan with language support
 function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE, cancelScheduled = false, periodEndDate = null, nextResetAt = null, topupRemaining = 0) {
-  const upgradeProLink = document.getElementById("upgradeProLink");
-  const upgradeProPlusLink = document.getElementById("upgradeProPlusLink");
+  const manageLink = document.getElementById("manageSubscriptionLink");
   const upgradeTitle = document.querySelector(".upgrade-title");
   const upgradeBox = document.querySelector(".upgrade-box");
   const upgradeButtons = document.querySelector(".upgrade-buttons");
@@ -388,25 +391,26 @@ function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE, cancelScheduled = 
   const topupSection = document.getElementById("topupSection");
   const topupLabel = topupSection?.querySelector(".topup-label");
   
-  if (!upgradeProLink || !upgradeProPlusLink || !upgradeTitle || !upgradeBox || !upgradeButtons) return;
+  if (!manageLink || !upgradeBox || !upgradeButtons) return;
 
   const locale = language === "korean" ? "ko-KR" : language === "japanese" ? "ja-JP" : language === "spanish" ? "es-ES" : "en-US";
 
-  // Plan expiry: show for Pro/Pro+ (renews date or active until when cancelled)
+  // Plan expiry / reset date: show for all plans (Pro/Pro+ renews; Free resets)
   if (planExpiryEl) {
+    let dateToShow = null;
+    let textKey = null;
     if (plan === "pro" || plan === "pro_plus") {
-      const dateToShow = cancelScheduled && periodEndDate ? periodEndDate : nextResetAt;
-      if (dateToShow) {
-        const endDate = new Date(dateToShow);
-        const dateStr = endDate.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
-        const text = cancelScheduled
-          ? getTranslation("activeUntil", language).replace("{date}", dateStr)
-          : getTranslation("renewsOn", language).replace("{date}", dateStr);
-        planExpiryEl.textContent = text;
-        planExpiryEl.style.display = "block";
-      } else {
-        planExpiryEl.style.display = "none";
-      }
+      dateToShow = cancelScheduled && periodEndDate ? periodEndDate : nextResetAt;
+      textKey = cancelScheduled ? "activeUntil" : "renewsOn";
+    } else if (plan === "free" && nextResetAt) {
+      dateToShow = nextResetAt;
+      textKey = "resetsOn";
+    }
+    if (dateToShow && textKey) {
+      const endDate = new Date(dateToShow);
+      const dateStr = endDate.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
+      planExpiryEl.textContent = getTranslation(textKey, language).replace("{date}", dateStr);
+      planExpiryEl.style.display = "block";
     } else {
       planExpiryEl.style.display = "none";
     }
@@ -458,40 +462,16 @@ function updateUpgradeLink(plan, language = DEFAULT_LANGUAGE, cancelScheduled = 
 
   console.log(`[ReplyMate] Rendering billing UI for plan: ${plan}`);
 
-  if (plan === 'pro_plus') {
-    // Pro Plus plan - show enjoy message in yellow box, hide all upgrade buttons
-    upgradeTitle.style.display = "";
-    upgradeTitle.textContent = getTranslation("enjoyReplyMate", language);
-    upgradeTitle.classList.add("enjoy-box");
-    upgradeButtons.style.display = "none"; // Hide all upgrade buttons
-    
-    // Keep light purple box - reset any inline overrides
+  // Always show Manage Subscription button (opens upgrade page)
+  if (upgradeTitle) upgradeTitle.style.display = "none";
+  manageLink.textContent = getTranslation("manageSubscription", language);
+  manageLink.style.display = "block";
+  upgradeButtons.style.display = "flex";
+  if (upgradeBox) {
     upgradeBox.style.background = "";
     upgradeBox.style.border = "";
     upgradeBox.style.color = "";
     upgradeBox.style.boxShadow = "";
-    
-    console.log("[ReplyMate] Billing UI rendered: Pro Plus plan (enjoy message)");
-  } else if (plan === 'pro') {
-    // Pro plan - hide "Current Plan" line, show upgrade to Pro Plus only
-    upgradeTitle.classList.remove("enjoy-box");
-    upgradeTitle.style.display = "none";
-    upgradeProLink.style.display = "none"; // Hide Pro button
-    upgradeProPlusLink.style.display = "block"; // Show Pro Plus button
-    upgradeProPlusLink.textContent = getTranslation("upgradeToProPlus", language);
-    upgradeButtons.style.display = "flex";
-    console.log("[ReplyMate] Billing UI rendered: Pro plan (upgrade to Pro Plus available)");
-  } else {
-    // Free plan - show both upgrade buttons
-    upgradeTitle.classList.remove("enjoy-box");
-    upgradeTitle.style.display = "";
-    upgradeTitle.textContent = getTranslation("upgradeMore", language);
-    upgradeProLink.style.display = "block"; // Show Pro button
-    upgradeProPlusLink.style.display = "block"; // Show Pro Plus button
-    upgradeProLink.textContent = getTranslation("upgradeToPro", language);
-    upgradeProPlusLink.textContent = getTranslation("upgradeToProPlus", language);
-    upgradeButtons.style.display = "flex";
-    console.log("[ReplyMate] Billing UI rendered: Free plan (upgrades to Pro and Pro Plus available)");
   }
 }
 
@@ -756,9 +736,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const languageSelect = document.getElementById("languageSelect");
   const saveButton = document.getElementById("saveButton");
   const statusMessage = document.getElementById("statusMessage");
-  const upgradeProLink = document.getElementById("upgradeProLink");
-  const upgradeProPlusLink = document.getElementById("upgradeProPlusLink");
-
   if (!toneSelect || !lengthSelect || !userNameInput || !languageSelect || !saveButton || !statusMessage) {
     return;
   }
@@ -797,33 +774,16 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Add click handler for Pro upgrade link
-  if (upgradeProLink) {
-    upgradeProLink.addEventListener("click", async (e) => {
+  // Manage Subscription link - opens upgrade page
+  const manageSubscriptionLink = document.getElementById("manageSubscriptionLink");
+  if (manageSubscriptionLink) {
+    const upgradeUrl = (typeof REPLYMATE_UPGRADE_URL !== "undefined" ? REPLYMATE_UPGRADE_URL : "https://taeyun0207.github.io/replymate-site/upgrade/index.html");
+    manageSubscriptionLink.href = upgradeUrl;
+    manageSubscriptionLink.target = "_blank";
+    manageSubscriptionLink.rel = "noopener noreferrer";
+    manageSubscriptionLink.addEventListener("click", (e) => {
       e.preventDefault();
-      
-      console.log(`[ReplyMate] Pro upgrade button clicked - Target plan: pro`);
-      
-      // Use background service worker for Stripe checkout
-      chrome.runtime.sendMessage({
-        type: "CREATE_STRIPE_CHECKOUT",
-        targetPlan: "pro"
-      });
-    });
-  }
-
-  // Add click handler for Pro Plus upgrade link
-  if (upgradeProPlusLink) {
-    upgradeProPlusLink.addEventListener("click", async (e) => {
-      e.preventDefault();
-      
-      console.log(`[ReplyMate] Pro Plus upgrade button clicked - Target plan: pro_plus`);
-      
-      // Use background service worker for Stripe checkout
-      chrome.runtime.sendMessage({
-        type: "CREATE_STRIPE_CHECKOUT",
-        targetPlan: "pro_plus"
-      });
+      chrome.tabs.create({ url: upgradeUrl, active: true });
     });
   }
 

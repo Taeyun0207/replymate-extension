@@ -45,8 +45,8 @@ const openai = new OpenAI({
 const PLAN_PRICE_IDS = {
   pro_monthly: process.env.STRIPE_PRICE_PRO_MONTHLY || process.env.STRIPE_PRICE_PRO,
   pro_annual: process.env.STRIPE_PRICE_PRO_ANNUAL,
-  pro_plus_monthly: process.env.STRIPE_PRICE_PROPLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_PLUS,
-  pro_plus_annual: process.env.STRIPE_PRICE_PROPLUS_ANNUAL,
+  pro_plus_monthly: process.env.STRIPE_PRICE_PRO_PLUS_MONTHLY || process.env.STRIPE_PRICE_PROPLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_PLUS,
+  pro_plus_annual: process.env.STRIPE_PRICE_PRO_PLUS_ANNUAL || process.env.STRIPE_PRICE_PROPLUS_ANNUAL,
 };
 
 // Top-up pack price IDs (one-time payment)
@@ -313,8 +313,8 @@ app.get("/health", (req, res) => {
 });
 
 // Billing redirects after Stripe Checkout (success/cancel URLs)
-const BILLING_SUCCESS_URL = process.env.BILLING_SUCCESS_URL || "https://replymate.ai/upgrade?success=1";
-const BILLING_CANCEL_URL = process.env.BILLING_CANCEL_URL || "https://replymate.ai/upgrade?cancelled=1";
+const BILLING_SUCCESS_URL = process.env.BILLING_SUCCESS_URL || "https://taeyun0207.github.io/replymate-site/upgrade/index.html?success=1";
+const BILLING_CANCEL_URL = process.env.BILLING_CANCEL_URL || "https://taeyun0207.github.io/replymate-site/upgrade/index.html?cancelled=1";
 app.get("/billing/success", (req, res) => res.redirect(302, BILLING_SUCCESS_URL));
 app.get("/billing/cancel", (req, res) => res.redirect(302, BILLING_CANCEL_URL));
 
@@ -372,11 +372,85 @@ app.post("/translate", requireAuth, async (req, res) => {
       max_tokens: maxTokens
     });
     const translated = completion.choices?.[0]?.message?.content?.trim() || "";
-    await recordTranslationUsage(userId);
+    recordTranslationUsage(userId).catch((e) => console.error("[Translate] recordUsage:", e?.message));
     res.json({ translated, remaining: usageCheck.remaining !== null ? usageCheck.remaining - 1 : null });
   } catch (error) {
     console.error("[Translate] Error:", error?.message || error);
     res.status(500).json({ error: error?.message || "Translation failed" });
+  }
+});
+
+// Streaming translate: same logic but streams output for faster perceived response
+app.post("/translate-stream", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const usageCheck = await checkTranslationLimit(userId);
+    if (!usageCheck.allowed) {
+      return res.status(403).json({
+        error: "translation_limit_reached",
+        message: "Daily translation limit reached. Upgrade to Pro for unlimited translations.",
+      });
+    }
+
+    const { text, targetLang } = req.body || {};
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ error: "text is required and must be a string" });
+    }
+    const target = (targetLang || "en").toLowerCase();
+    const langNames = {
+      en: "English", zh: "Chinese", es: "Spanish", fr: "French", de: "German",
+      ja: "Japanese", ko: "Korean", pt: "Portuguese", ar: "Arabic", ru: "Russian",
+      hi: "Hindi", it: "Italian", vi: "Vietnamese", th: "Thai", id: "Indonesian",
+      tr: "Turkish", nl: "Dutch", pl: "Polish"
+    };
+    const validTargets = Object.keys(langNames);
+    if (!validTargets.includes(target)) {
+      return res.status(400).json({ error: `targetLang must be one of: ${validTargets.join(", ")}` });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const translationModel = process.env.TRANSLATION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const maxTokens = Math.max(200, Math.min(2000, 100 + Math.ceil(text.length * 0.6)));
+    const stream = await openai.chat.completions.create({
+      model: translationModel,
+      messages: [
+        {
+          role: "system",
+          content: `You are a translator. Translate the user's text into ${langNames[target]}. Output ONLY the translation, no explanations or quotes. Preserve line breaks and formatting.`
+        },
+        { role: "user", content: text }
+      ],
+      temperature: 0.2,
+      max_tokens: maxTokens,
+      stream: true
+    });
+
+    let fullText = "";
+    for await (const chunk of stream) {
+      const content = chunk.choices?.[0]?.delta?.content;
+      if (content) {
+        fullText += content;
+        res.write(`data: ${JSON.stringify({ type: "chunk", text: content })}\n\n`);
+        if (typeof res.flush === "function") res.flush();
+      }
+    }
+    res.write(`data: ${JSON.stringify({ type: "done", remaining: usageCheck.remaining !== null ? usageCheck.remaining - 1 : null })}\n\n`);
+    res.end();
+
+    recordTranslationUsage(userId).catch((e) => console.error("[TranslateStream] recordUsage:", e?.message));
+  } catch (error) {
+    console.error("[TranslateStream] Error:", error?.message || error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: error?.message || "Translation failed" });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: error?.message || "Translation failed" })}\n\n`);
+      res.end();
+    }
   }
 });
 

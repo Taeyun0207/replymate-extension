@@ -20,14 +20,60 @@
   const BACKEND_BASE = "https://replymate-backend-bot8.onrender.com";
   const STORAGE_ICON_POS = "replymate_translation_icon_pos";
   const STORAGE_PANEL_POS = "replymate_translation_panel_pos";
+  const STORAGE_TARGET_LANG = "replymate_translation_target_lang";
 
   /**
-   * Get the most recent email message from Gmail thread (DOM parsing).
+   * Strip Gmail UI elements from scraped message (timestamps, buttons, unsubscribe, etc.).
+   * Returns only the actual email body for translation.
+   */
+  function stripGmailUIFromMessage(text) {
+    if (!text || typeof text !== "string") return "";
+    let cleaned = text;
+
+    // Remove sender line with Unsubscribe: "Name <email> Unsubscribe" or "Name <email> 구독 취소"
+    cleaned = cleaned.replace(/^[^\n]*<[^>]*@[^>]*>[\s\u00a0]*(구독\s*취소|Unsubscribe|退订|退訂|Desuscribirse|Se désabonner|Abbestellen|退会|구독해지)[^\n]*$/gim, "");
+
+    // Remove timestamp lines: "17:24 (1 hour ago)", "17:24 (1시간 전)", "Mar 14, 5:24 PM"
+    cleaned = cleaned.replace(/^\d{1,2}:\d{2}\s*\([^)]*\)\s*$/gm, "");
+    cleaned = cleaned.replace(/^[A-Za-z]{3}\s+\d{1,2},?\s+\d{1,2}:\d{2}\s*[AP]M\s*$/gm, "");
+    cleaned = cleaned.replace(/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\s+\d{1,2}:\d{2}\s*$/gm, "");
+
+    // Remove common Gmail UI (Reply, More, To me, etc.) - whole lines that are just these
+    const uiPatterns = [
+      /^답장\s*$/m, /^Reply\s*$/im, /^Reply all\s*$/im, /^Forward\s*$/im, /^返信\s*$/m, /^Responder\s*$/im, /^Répondre\s*$/im, /^Antworten\s*$/im,
+      /^더보기\s*$/m, /^More\s*$/im, /^もっと見る\s*$/m, /^Más\s*$/im, /^Plus\s*$/im, /^Mehr\s*$/im,
+      /^나에게\s*$/m, /^To me\s*$/im, /^自分へ\s*$/m, /^Para mí\s*$/im, /^À moi\s*$/im, /^An mich\s*$/im,
+      /^그룹에 이모지로 반응할 수 없습니다\.\s*$/m,
+      /^You can't react with emoji in groups\.\s*$/im,
+      /^グループで絵文字に反応できません\.\s*$/m,
+      /^No puedes reaccionar con emojis en grupos\.\s*$/im,
+      /^구독 취소\s*$/m, /^Unsubscribe\s*$/im
+    ];
+    uiPatterns.forEach((p) => { cleaned = cleaned.replace(p, ""); });
+
+    // Remove lines that are only "Unsubscribe" or similar
+    cleaned = cleaned.replace(/^\s*(Unsubscribe|구독 취소|退订|退訂|Desuscribirse|Se désabonner)\s*$/gim, "");
+
+    // Normalize whitespace
+    cleaned = cleaned.replace(/\n\s*\n\s*\n+/g, "\n\n").replace(/^\s+|\s+$/g, "");
+
+    return cleaned.trim();
+  }
+
+  /**
+   * Get subject + email body only (no Gmail UI) for translation.
    */
   function getLatestMessage() {
     try {
       const ctx = typeof extractThreadContext === "function" ? extractThreadContext() : null;
-      return (ctx && ctx.latestMessage) ? String(ctx.latestMessage).trim() : "";
+      if (!ctx) return "";
+
+      const body = stripGmailUIFromMessage(ctx.latestMessage || "");
+      const subject = (ctx.subject || "").trim();
+
+      if (!subject && !body) return "";
+      if (subject && body) return `Subject: ${subject}\n\n${body}`;
+      return subject || body;
     } catch (e) {
       console.warn("[ReplyMate Translation] getLatestMessage error:", e);
       return "";
@@ -79,7 +125,7 @@
   }
 
   /**
-   * Call translation API.
+   * Call translation API (non-streaming fallback).
    */
   async function translateText(text, targetLang) {
     const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
@@ -93,6 +139,63 @@
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Translation failed");
     return data.translated || "";
+  }
+
+  /**
+   * Stream translation and call onDelta for each chunk. Falls back to non-streaming on error.
+   */
+  async function translateTextStream(text, targetLang, onDelta) {
+    const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
+    if (!token) throw new Error("Sign in required");
+    const targetCode = typeof targetLang === "string" ? mapToTargetCode(targetLang) : mapToTargetCode("english");
+    const res = await fetch(`${BACKEND_BASE}/translate-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ text, targetLang: targetCode })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Translation failed");
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullText = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data: ")) continue;
+        try {
+          const obj = JSON.parse(trimmed.slice(6).trim());
+          const chunk = obj.type === "chunk" ? obj.text : obj.delta;
+          if (chunk) {
+            fullText += chunk;
+            if (onDelta) onDelta(fullText);
+          }
+          if (obj.error) throw new Error(obj.error);
+        } catch (e) {
+          if (e instanceof SyntaxError) continue;
+          throw e;
+        }
+      }
+    }
+    const trimmed = buffer.trim();
+    if (trimmed.startsWith("data: ")) {
+      try {
+        const obj = JSON.parse(trimmed.slice(6).trim());
+        const chunk = obj.type === "chunk" ? obj.text : obj.delta;
+        if (chunk) {
+          fullText += chunk;
+          if (onDelta) onDelta(fullText);
+        }
+      } catch (_) {}
+    }
+    return fullText;
   }
 
   /**
@@ -149,6 +252,37 @@
         chrome.storage.local.set({ [key]: { x, y } });
       }
     } catch (e) { /* ignore */ }
+  }
+
+  /**
+   * Save selected target language to chrome.storage.local.
+   */
+  function saveTargetLang(code) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ [STORAGE_TARGET_LANG]: code || "" });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  /**
+   * Load saved target language from chrome.storage.local.
+   */
+  function loadTargetLang() {
+    return new Promise((resolve) => {
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.get([STORAGE_TARGET_LANG], (r) => {
+            const v = r?.[STORAGE_TARGET_LANG];
+            resolve(typeof v === "string" ? v : "");
+          });
+        } else {
+          resolve("");
+        }
+      } catch {
+        resolve("");
+      }
+    });
   }
 
   /**
@@ -375,6 +509,11 @@
           targetSelect.appendChild(opt);
         });
       }
+      loadTargetLang().then((saved) => {
+        if (saved && targetSelect.querySelector(`option[value="${saved}"]`)) {
+          targetSelect.value = saved;
+        }
+      });
     }
 
     const els = {
@@ -461,8 +600,15 @@
     if (resultEl) resultEl.dataset.placeholder = t("translating");
     setResult(panel, "", false, true);
     try {
-      const translated = await translateText(sourceText, targetCode);
-      setResult(panel, translated);
+      try {
+        const translated = await translateTextStream(sourceText, targetCode, (partial) => {
+          setResult(panel, partial);
+        });
+        setResult(panel, translated);
+      } catch (streamErr) {
+        const translated = await translateText(sourceText, targetCode);
+        setResult(panel, translated);
+      }
     } catch (err) {
       const msg = err.message || String(err);
       const isLimitReached = msg.includes("translation_limit_reached");
@@ -629,6 +775,13 @@
       }
       await runTranslateFlow(text, panel);
     });
+
+    const targetSelectEl = document.getElementById("replymate-translate-target");
+    if (targetSelectEl) {
+      targetSelectEl.addEventListener("change", () => {
+        saveTargetLang(targetSelectEl.value || "");
+      });
+    }
 
     document.getElementById("replymate-translate-copy").addEventListener("click", async () => {
       const resultEl = panel.querySelector("#replymate-translate-result");
