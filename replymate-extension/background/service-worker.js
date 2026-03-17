@@ -4,8 +4,8 @@ importScripts("../lib/auth-config.js", "../lib/auth-shared.js");
 const BACKEND_URL = "https://replymate-backend-bot8.onrender.com";
 
 // Shared function to create Stripe checkout session for subscription (requires auth)
-async function createStripeCheckout(targetPlan) {
-  console.log(`[ReplyMate Background] Creating Stripe checkout for ${targetPlan} plan`);
+async function createStripeCheckout(targetPlan, billingType = "annual") {
+  console.log(`[ReplyMate Background] Creating Stripe checkout for ${targetPlan} (${billingType})`);
 
   const token = await ReplyMateAuthShared.getAccessToken();
   if (!token) {
@@ -22,7 +22,8 @@ async function createStripeCheckout(targetPlan) {
         "Authorization": `Bearer ${token}`,
       },
       body: JSON.stringify({
-        targetPlan: targetPlan
+        targetPlan,
+        billingType: billingType === "monthly" ? "monthly" : "annual"
       })
     });
     
@@ -108,8 +109,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep channel open for async sendResponse
   } else if (message.type === "CREATE_STRIPE_CHECKOUT" && message.targetPlan) {
     // Handle Stripe checkout request from popup or Gmail content script
-    console.log(`[ReplyMate Background] Received Stripe checkout request for ${message.targetPlan} plan`);
-    createStripeCheckout(message.targetPlan);
+    const billingType = message.billingType === "monthly" ? "monthly" : "annual";
+    console.log(`[ReplyMate Background] Received Stripe checkout request for ${message.targetPlan} (${billingType})`);
+    createStripeCheckout(message.targetPlan, billingType);
     sendResponse({ success: true });
   } else if (message.type === "CREATE_STRIPE_TOPUP" && message.pack) {
     // Handle Stripe top-up checkout (100 or 500 replies)

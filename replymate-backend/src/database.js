@@ -38,6 +38,8 @@ function toRow(obj) {
     periodEndAt: obj.period_end_at ?? null,
     createdAt: obj.created_at ?? obj.createdAt,
     updatedAt: obj.updated_at ?? obj.updatedAt,
+    translationUsed: obj.translation_used ?? 0,
+    translationResetAt: obj.translation_reset_at ?? null,
   };
 }
 
@@ -263,15 +265,20 @@ async function clearUserCancelScheduled(userId) {
   if (error) throw error;
 }
 
-async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, periodEndIso) {
+async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, periodEndIso, cancelAtPeriodEnd = null, periodEndAt = null) {
   const now = new Date().toISOString();
+  const updates = {
+    billing_cycle_start: periodStartIso,
+    next_reset_at: periodEndIso,
+    updated_at: now,
+  };
+  if (cancelAtPeriodEnd !== null) {
+    updates.cancel_at_period_end = !!cancelAtPeriodEnd;
+    updates.period_end_at = cancelAtPeriodEnd ? periodEndAt : null;
+  }
   const { data, error } = await supabase
     .from(TABLE_NAME)
-    .update({
-      billing_cycle_start: periodStartIso,
-      next_reset_at: periodEndIso,
-      updated_at: now,
-    })
+    .update(updates)
     .eq("stripe_subscription_id", subscriptionId)
     .select("user_id")
     .maybeSingle();
@@ -313,10 +320,97 @@ async function testConnection() {
   return true;
 }
 
+/**
+ * Check if user can translate (does not consume). Free: 10/day. Pro/Pro+: unlimited.
+ * Returns { allowed: boolean, remaining?: number }.
+ */
+async function checkTranslationLimit(userId) {
+  const { getTranslationLimit } = require("./config/plans");
+
+  const { data: row, error: fetchErr } = await supabase
+    .from(TABLE_NAME)
+    .select("plan, translation_used, translation_reset_at")
+    .eq("user_id", userId)
+    .single();
+
+  if (fetchErr || !row) throw fetchErr || new Error("User not found");
+
+  const plan = row.plan ?? "free";
+  const limit = getTranslationLimit(plan);
+
+  if (limit === null) return { allowed: true, remaining: null };
+
+  const now = new Date();
+  const nowMs = now.getTime();
+  let translationUsed = row.translation_used ?? 0;
+  let translationResetAt = row.translation_reset_at;
+
+  const startOfNextDayUtc = () => {
+    const d = new Date(now);
+    d.setUTCHours(24, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  if (!translationResetAt || nowMs >= new Date(translationResetAt).getTime()) {
+    translationUsed = 0;
+  }
+
+  if (translationUsed >= limit) return { allowed: false, remaining: 0 };
+  return { allowed: true, remaining: limit - translationUsed };
+}
+
+/**
+ * Consume one translation for the user. Call only after successful translation.
+ */
+async function recordTranslationUsage(userId) {
+  const { getTranslationLimit } = require("./config/plans");
+
+  const { data: row, error: fetchErr } = await supabase
+    .from(TABLE_NAME)
+    .select("plan, translation_used, translation_reset_at")
+    .eq("user_id", userId)
+    .single();
+
+  if (fetchErr || !row) throw fetchErr || new Error("User not found");
+
+  const plan = row.plan ?? "free";
+  const limit = getTranslationLimit(plan);
+  if (limit === null) return;
+
+  const now = new Date();
+  const nowMs = now.getTime();
+  let translationUsed = row.translation_used ?? 0;
+  let translationResetAt = row.translation_reset_at;
+
+  const startOfNextDayUtc = () => {
+    const d = new Date(now);
+    d.setUTCHours(24, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  if (!translationResetAt || nowMs >= new Date(translationResetAt).getTime()) {
+    translationUsed = 0;
+    translationResetAt = startOfNextDayUtc();
+  }
+
+  const { error: updateErr } = await supabase
+    .from(TABLE_NAME)
+    .update({
+      translation_used: translationUsed + 1,
+      translation_reset_at: translationResetAt,
+      updated_at: now.toISOString(),
+    })
+    .eq("user_id", userId);
+
+  if (updateErr) throw updateErr;
+}
+
 module.exports = {
   getUser,
   updateUserPlan,
   recordUsage,
+  checkTranslationLimit,
+  recordTranslationUsage,
   closeDatabase,
   testConnection,
   updateUserCancelScheduled,

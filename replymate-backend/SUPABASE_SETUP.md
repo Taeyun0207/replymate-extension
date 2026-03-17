@@ -61,6 +61,15 @@ ALTER TABLE public.users ADD COLUMN IF NOT EXISTS cancel_at_period_end BOOLEAN D
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS period_end_at TIMESTAMPTZ;
 ```
 
+## 2a. Translation usage columns (optional)
+
+For translation limits: free users get 10/day; Pro/Pro+ unlimited.
+
+```sql
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS translation_used INTEGER DEFAULT 0;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS translation_reset_at TIMESTAMPTZ;
+```
+
 ## 2b. Top-up credits table (optional)
 
 For one-time reply packs (100 / 500 replies). One row per user; expiry extends to 1 year from each purchase.
@@ -98,6 +107,21 @@ DROP TABLE IF EXISTS public.user_topups;
 - `checkout.session.completed` – upgrades plan after payment; also handles top-up purchases (one-time payment)
 - `customer.subscription.updated` – syncs billing period when subscription renews or changes
 - `customer.subscription.deleted` – downgrades to free when subscription ends
+
+**Subscription Stripe setup:** Create two products (Pro, Pro+) each with monthly and annual prices:
+
+| Env var | Plan | Price |
+|---------|------|-------|
+| `STRIPE_PRICE_PRO` | Pro monthly | $1.99/month |
+| `STRIPE_PRICE_PRO_ANNUAL` | Pro annual | $19.90/year |
+| `STRIPE_PRICE_PRO_PLUS` | Pro+ monthly | $4.99/month |
+| `STRIPE_PRICE_PROPLUS_ANNUAL` | Pro+ annual | $49.90/year |
+
+Optional aliases: `STRIPE_PRICE_PRO_MONTHLY` / `STRIPE_PRICE_PROPLUS_MONTHLY` override the above if set.
+
+**Billing redirect URLs** (optional): After Stripe Checkout, users are redirected. Defaults:
+- `BILLING_SUCCESS_URL` – default `https://replymate.ai/upgrade?success=1`
+- `BILLING_CANCEL_URL` – default `https://replymate.ai/upgrade?cancelled=1`
 
 **Top-up Stripe setup:** Create two one-time prices in Stripe ($3.99 for 100 replies, $7.99 for 500 replies) and add to `.env`:
 - `STRIPE_PRICE_TOPUP_100` – price ID for +100 replies pack

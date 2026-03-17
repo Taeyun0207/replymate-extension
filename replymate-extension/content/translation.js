@@ -13,6 +13,8 @@
   const TRANSLATION_PANEL_ID = "replymate-translation-panel";
   const TRANSLATION_TOAST_ID = "replymate-translation-toast";
   const BACKEND_BASE = "https://replymate-backend-bot8.onrender.com";
+  const STORAGE_ICON_POS = "replymate_translation_icon_pos";
+  const STORAGE_PANEL_POS = "replymate_translation_panel_pos";
 
   /**
    * Get the most recent email message from Gmail thread (DOM parsing).
@@ -86,17 +88,26 @@
   /**
    * Show temporary toast message.
    */
-  function showToast(message) {
+  function showToast(message, withCheck = false) {
     let toast = document.getElementById(TRANSLATION_TOAST_ID);
     if (!toast) {
       toast = document.createElement("div");
       toast.id = TRANSLATION_TOAST_ID;
-      toast.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;z-index:2147483647;opacity:0;transition:opacity 0.2s;pointer-events:none;";
+      toast.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#202124;color:#fff;padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;z-index:2147483647;opacity:0;transition:opacity 0.25s ease, transform 0.25s ease;pointer-events:none;box-shadow:0 4px 20px rgba(0,0,0,0.25);display:flex;align-items:center;gap:8px;";
       document.body.appendChild(toast);
     }
-    toast.textContent = message;
+    if (withCheck) {
+      toast.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg><span></span>`;
+      toast.querySelector("span").textContent = message;
+    } else {
+      toast.textContent = message;
+    }
     toast.style.opacity = "1";
-    setTimeout(() => { toast.style.opacity = "0"; }, 1500);
+    toast.style.transform = "translateX(-50%) translateY(0)";
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateX(-50%) translateY(8px)";
+    }, 1800);
   }
 
   /**
@@ -120,6 +131,124 @@
   }
 
   /**
+   * Save position to chrome.storage.local.
+   */
+  function savePosition(key, x, y) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ [key]: { x, y } });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  /**
+   * Load position from chrome.storage.local.
+   */
+  function loadPosition(key, defaultX, defaultY) {
+    return new Promise((resolve) => {
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.get([key], (r) => {
+            const v = r?.[key];
+            resolve(v && typeof v.x === "number" && typeof v.y === "number"
+              ? { x: v.x, y: v.y }
+              : { x: defaultX, y: defaultY });
+          });
+        } else {
+          resolve({ x: defaultX, y: defaultY });
+        }
+      } catch {
+        resolve({ x: defaultX, y: defaultY });
+      }
+    });
+  }
+
+  /**
+   * Clamp value between min and max.
+   */
+  function clamp(val, min, max) {
+    return Math.max(min, Math.min(max, val));
+  }
+
+  /**
+   * Make an element draggable, constrained to viewport.
+   * Adds mousemove/mouseup on mousedown and removes them on mouseup so dragging works after first move.
+   */
+  function makeDraggable(el, onMove) {
+    el.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const rect = el.getBoundingClientRect();
+      const startLeft = rect.left;
+      const startTop = rect.top;
+      const elW = rect.width;
+      const elH = rect.height;
+      el.style.cursor = "grabbing";
+
+      const onMouseMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const newLeft = clamp(startLeft + dx, 0, window.innerWidth - elW);
+        const newTop = clamp(startTop + dy, 0, window.innerHeight - elH);
+        el.style.left = newLeft + "px";
+        el.style.top = newTop + "px";
+        el.style.right = "auto";
+        el.style.bottom = "auto";
+        el.style.transform = "none";
+        if (onMove) onMove(newLeft, newTop);
+      };
+
+      const onMouseUp = () => {
+        el.style.cursor = "grab";
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+  }
+
+  /**
+   * Make a panel draggable by its header (drag handle moves the panel), constrained to viewport.
+   * Uses same logic as icon drag for natural movement.
+   */
+  function makePanelDraggable(handle, panel, onMove) {
+    handle.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const rect = panel.getBoundingClientRect();
+      const initialLeft = rect.left;
+      const initialTop = rect.top;
+      const panelW = rect.width;
+      const panelH = rect.height;
+
+      const onMouseMove = (ev) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        const newLeft = clamp(initialLeft + dx, 0, window.innerWidth - panelW);
+        const newTop = clamp(initialTop + dy, 0, window.innerHeight - panelH);
+        panel.style.left = newLeft + "px";
+        panel.style.top = newTop + "px";
+        panel.style.transform = "none";
+        if (onMove) onMove(newLeft, newTop);
+      };
+      const onMouseUp = () => {
+        handle.style.cursor = "grab";
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+      handle.style.cursor = "grabbing";
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+  }
+
+  /**
    * Create and inject the translation panel UI.
    */
   function createPanel() {
@@ -129,37 +258,65 @@
     panel.id = TRANSLATION_PANEL_ID;
     panel.style.cssText = `
       position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 420px;
-      max-width: 95vw;
-      background: #fff;
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      width: 400px;
+      max-width: 92vw;
+      background: #ffffff;
+      border-radius: 16px;
+      box-shadow: 0 16px 56px rgba(0,0,0,0.18), 0 0 1px rgba(0,0,0,0.08);
       z-index: 2147483646;
-      font-family: 'Google Sans', Roboto, sans-serif;
+      font-family: 'Google Sans', Roboto, -apple-system, sans-serif;
       font-size: 14px;
       overflow: hidden;
       display: none;
+      opacity: 0;
+      transform: scale(0.96);
+      transition: opacity 0.2s ease, transform 0.2s ease;
     `;
+    const style = document.createElement("style");
+    style.textContent = `
+      .replymate-translate-btn { padding:12px 16px;background:#7943f1;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500;text-align:left;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;box-shadow:0 2px 8px rgba(121,67,241,0.3); }
+      .replymate-translate-btn:hover { background:#6b3ad4;transform:translateY(-1px);box-shadow:0 4px 12px rgba(121,67,241,0.35); }
+      .replymate-translate-btn:active { transform:translateY(0); }
+      .replymate-translate-btn:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }
+      .replymate-translate-manual { padding:10px 18px;background:#7943f1;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500;transition:background 0.2s,transform 0.15s; }
+      .replymate-translate-manual:hover { background:#6b3ad4;transform:translateY(-1px); }
+      .replymate-translate-manual:active { transform:translateY(0); }
+      .replymate-translate-manual:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }
+      .replymate-translate-copy { padding:10px 18px;background:#e8eaed;color:#3c4043;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:500;transition:background 0.2s,transform 0.15s; }
+      .replymate-translate-copy:hover { background:#dadce0;transform:translateY(-1px); }
+      .replymate-translate-copy:active { transform:translateY(0); }
+      .replymate-translate-copy:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }
+      #replymate-translate-close:hover { background:rgba(255,255,255,0.4) !important; }
+      #replymate-translate-close:focus-visible { outline:2px solid rgba(255,255,255,0.8);outline-offset:2px; }
+      #replymate-translate-header { cursor:grab; }
+      #replymate-translate-header:active { cursor:grabbing; }
+      #replymate-translate-input:focus { outline:none;border-color:#7943f1;box-shadow:0 0 0 2px rgba(121,67,241,0.2); }
+      #replymate-translate-result.replymate-loading { color:#5f6368;display:flex;align-items:center;gap:8px; }
+      .replymate-spinner { width:18px;height:18px;border:2px solid #e8eaed;border-top-color:#7943f1;border-radius:50%;animation:replymate-spin 0.7s linear infinite; }
+      @keyframes replymate-spin { to { transform:rotate(360deg); } }
+    `;
+    document.head.appendChild(style);
 
     panel.innerHTML = `
-      <div style="padding:16px;border-bottom:1px solid #e0e0e0;display:flex;justify-content:space-between;align-items:center;">
-        <span style="font-weight:600;color:#1f1f1f;">ReplyMate Translate</span>
-        <button id="replymate-translate-close" style="background:none;border:none;cursor:pointer;font-size:18px;color:#5f6368;padding:4px;">&times;</button>
+      <div id="replymate-translate-header" style="padding:14px 16px;background:linear-gradient(135deg,#7943f1 0%,#9d6cf7 100%);color:#fff;display:flex;justify-content:space-between;align-items:center;user-select:none;">
+        <span id="replymate-translate-title" style="font-weight:600;font-size:15px;letter-spacing:0.02em;">ReplyMate Translate</span>
+        <button id="replymate-translate-close" style="background:rgba(255,255,255,0.25);border:none;cursor:pointer;font-size:18px;color:#fff;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>
       </div>
-      <div style="padding:16px;">
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          <button id="replymate-translate-latest" style="padding:10px 14px;background:#7943f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">Translate latest message</button>
-          <button id="replymate-translate-reply" style="padding:10px 14px;background:#7943f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;text-align:left;">Translate reply</button>
-          <div>
-            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="3" style="width:100%;padding:10px 12px;border:1px solid #dadce0;border-radius:8px;font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
-            <button id="replymate-translate-manual" style="margin-top:8px;padding:10px 14px;background:#7943f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">Translate</button>
+      <div style="padding:16px;background:#fafafa;">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <button id="replymate-translate-latest" class="replymate-translate-btn">Translate latest message</button>
+            <button id="replymate-translate-reply" class="replymate-translate-btn">Translate reply</button>
           </div>
-          <div id="replymate-translate-result" style="min-height:80px;padding:12px;border:1px solid #e8eaed;border-radius:8px;background:#f8f9fa;white-space:pre-wrap;word-break:break-word;font-size:13px;color:#202124;"></div>
-          <div style="display:flex;gap:8px;">
-            <button id="replymate-translate-copy" style="padding:8px 14px;background:#e8eaed;color:#3c4043;border:none;border-radius:8px;cursor:pointer;font-size:13px;">Copy</button>
+          <div>
+            <label id="replymate-translate-paste-label" style="font-size:12px;color:#5f6368;margin-bottom:6px;display:block;">Paste text to translate</label>
+            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="3" style="width:100%;padding:12px 14px;border:1px solid #dadce0;border-radius:10px;font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit;background:#fff;"></textarea>
+            <button id="replymate-translate-manual" class="replymate-translate-manual" style="margin-top:10px;">Translate</button>
+          </div>
+          <div>
+            <label id="replymate-translate-result-label" style="font-size:12px;color:#5f6368;margin-bottom:6px;display:block;">Result</label>
+            <div id="replymate-translate-result" data-placeholder="" style="min-height:100px;max-height:280px;overflow-y:scroll;overflow-x:hidden;padding:14px;padding-bottom:24px;box-sizing:border-box;border:1px solid #e8eaed;border-radius:10px;background:#fff;white-space:pre-wrap;word-break:break-word;font-size:14px;color:#202124;line-height:1.5;transition:border-color 0.2s,box-shadow 0.2s;"></div>
+            <button id="replymate-translate-copy" class="replymate-translate-copy" style="margin-top:10px;">Copy</button>
           </div>
         </div>
       </div>
@@ -176,6 +333,9 @@
     const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
     const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
 
+    const titleEl = document.getElementById("replymate-translate-title");
+    if (titleEl) titleEl.textContent = t("translatePanelTitle");
+
     const els = {
       latest: document.getElementById("replymate-translate-latest"),
       reply: document.getElementById("replymate-translate-reply"),
@@ -191,16 +351,37 @@
     if (els.input) els.input.placeholder = t("translateInputPlaceholder");
     if (els.copy) els.copy.textContent = t("translateCopy");
     if (els.close) els.close.title = t("translateClose");
+    const pasteLabel = document.getElementById("replymate-translate-paste-label");
+    const resultLabel = document.getElementById("replymate-translate-result-label");
+    if (pasteLabel) pasteLabel.textContent = t("translatePasteLabel");
+    if (resultLabel) resultLabel.textContent = t("translateResultLabel");
+    const resultEl = document.getElementById("replymate-translate-result");
+    if (resultEl) resultEl.dataset.placeholder = t("translating");
+  }
+
+  /**
+   * Clear result and input when panel is closed.
+   */
+  function clearPanelState(panel) {
+    setResult(panel, "");
+    const input = document.getElementById("replymate-translate-input");
+    if (input) input.value = "";
   }
 
   /**
    * Set result area content.
    */
-  function setResult(panel, text, isError = false) {
+  function setResult(panel, text, isError = false, isLoading = false) {
     const el = panel && panel.querySelector("#replymate-translate-result");
-    if (el) {
+    if (!el) return;
+    el.classList.remove("replymate-loading");
+    el.style.color = isError ? "#d93025" : "#202124";
+    if (isLoading) {
+      el.classList.add("replymate-loading");
+      const placeholder = el.dataset.placeholder || "...";
+      el.innerHTML = `<span class="replymate-spinner"></span><span>${placeholder}</span>`;
+    } else {
       el.textContent = text || "";
-      el.style.color = isError ? "#d93025" : "#202124";
     }
   }
 
@@ -222,12 +403,17 @@
       return;
     }
 
-    setResult(panel, "...");
+    const resultEl = panel && panel.querySelector("#replymate-translate-result");
+    if (resultEl) resultEl.dataset.placeholder = t("translating");
+    setResult(panel, "", false, true);
     try {
       const translated = await translateText(sourceText, lang);
       setResult(panel, translated);
     } catch (err) {
-      setResult(panel, t("translateError") + (err.message || String(err)), true);
+      const msg = err.message || String(err);
+      const isLimitReached = msg.includes("translation_limit_reached");
+      const displayMsg = isLimitReached ? t("translateLimitReached") : t("translateError") + msg;
+      setResult(panel, displayMsg, true);
     }
   }
 
@@ -237,10 +423,13 @@
   async function init() {
     if (document.getElementById(TRANSLATION_ICON_ID)) return;
 
-    const icon = document.createElement("button");
+    const icon = document.createElement("div");
     icon.id = TRANSLATION_ICON_ID;
-    icon.innerHTML = "&#x1F4DD;";
+    icon.setAttribute("role", "button");
+    icon.setAttribute("tabindex", "0");
+    icon.setAttribute("aria-label", "ReplyMate Translate");
     icon.title = "ReplyMate Translate";
+    icon.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24" style="display:block;"><path d="M12.87 15.07l-2.54-2.51.03-.03A17.56 17.56 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/></svg>`;
     icon.style.cssText = `
       position: fixed;
       bottom: 24px;
@@ -248,38 +437,109 @@
       width: 48px;
       height: 48px;
       border-radius: 50%;
-      background: #7943f1;
+      background: linear-gradient(135deg,#7943f1 0%,#9d6cf7 100%);
       color: #fff;
       border: none;
-      font-size: 22px;
-      cursor: pointer;
+      cursor: grab;
       z-index: 2147483645;
-      box-shadow: 0 2px 12px rgba(121,67,241,0.4);
+      box-shadow: 0 4px 16px rgba(121,67,241,0.4);
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: box-shadow 0.2s, transform 0.2s;
+      user-select: none;
     `;
+    const iconStyle = document.createElement("style");
+    iconStyle.textContent = `#replymate-translation-icon:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }`;
+    document.head.appendChild(iconStyle);
+
+    const defaultIconX = window.innerWidth - 24 - 48;
+    const defaultIconY = window.innerHeight - 24 - 48;
+    const iconPos = await loadPosition(STORAGE_ICON_POS, defaultIconX, defaultIconY);
+    const iconX = clamp(iconPos.x, 0, window.innerWidth - 48);
+    const iconY = clamp(iconPos.y, 0, window.innerHeight - 48);
+    icon.style.left = iconX + "px";
+    icon.style.top = iconY + "px";
+    icon.style.right = "auto";
+    icon.style.bottom = "auto";
 
     icon.addEventListener("mouseenter", () => {
-      icon.style.background = "#b794f6";
+      icon.style.boxShadow = "0 6px 20px rgba(121,67,241,0.5)";
       icon.style.transform = "scale(1.05)";
     });
     icon.addEventListener("mouseleave", () => {
-      icon.style.background = "#7943f1";
+      icon.style.boxShadow = "0 4px 16px rgba(121,67,241,0.4)";
       icon.style.transform = "scale(1)";
     });
 
+    let iconDidDrag = false;
+    icon.addEventListener("mousedown", () => { iconDidDrag = false; });
+    makeDraggable(icon, (x, y) => {
+      iconDidDrag = true;
+      savePosition(STORAGE_ICON_POS, clamp(x, 0, window.innerWidth - 48), clamp(y, 0, window.innerHeight - 48));
+    });
+
     const panel = createPanel();
+
+    const defaultPanelX = Math.max(0, (window.innerWidth - 400) / 2);
+    const defaultPanelY = Math.max(0, (window.innerHeight - 450) / 2);
+    const panelPos = await loadPosition(STORAGE_PANEL_POS, defaultPanelX, defaultPanelY);
+    const panelRect = panel.getBoundingClientRect();
+    const panelW = panelRect.width || 400;
+    const panelH = panelRect.height || 450;
+    const panelX = clamp(panelPos.x, 0, window.innerWidth - panelW);
+    const panelY = clamp(panelPos.y, 0, window.innerHeight - panelH);
+    panel.style.left = panelX + "px";
+    panel.style.top = panelY + "px";
+    panel.style.transform = "none";
+
+    const header = document.getElementById("replymate-translate-header");
+    if (header) {
+      makePanelDraggable(header, panel, (x, y) => {
+        const r = panel.getBoundingClientRect();
+        savePosition(STORAGE_PANEL_POS, clamp(x, 0, window.innerWidth - r.width), clamp(y, 0, window.innerHeight - r.height));
+      });
+    }
+
     await updatePanelLabels(panel);
 
-    icon.addEventListener("click", async () => {
+    icon.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (iconDidDrag) return;
       const isVisible = panel.style.display === "block";
-      panel.style.display = isVisible ? "none" : "block";
-      if (!isVisible) await updatePanelLabels(panel);
+      if (isVisible) {
+        panel.style.opacity = "0";
+        panel.style.transform = "scale(0.96)";
+        setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
+      } else {
+        panel.style.display = "block";
+        await updatePanelLabels(panel);
+        requestAnimationFrame(() => {
+          panel.style.opacity = "1";
+          panel.style.transform = "scale(1)";
+        });
+        if (typeof getAccessToken === "function") getAccessToken().catch(() => {});
+      }
+    });
+    icon.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        icon.click();
+      }
     });
 
     document.getElementById("replymate-translate-close").addEventListener("click", () => {
-      panel.style.display = "none";
+      panel.style.opacity = "0";
+      panel.style.transform = "scale(0.96)";
+      setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && panel.style.display === "block") {
+        panel.style.opacity = "0";
+        panel.style.transform = "scale(0.96)";
+        setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
+      }
     });
 
     document.getElementById("replymate-translate-latest").addEventListener("click", async () => {
@@ -307,17 +567,26 @@
     document.getElementById("replymate-translate-manual").addEventListener("click", async () => {
       const input = document.getElementById("replymate-translate-input");
       const text = (input && input.value) ? String(input.value).trim() : "";
+      const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
+      const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+      if (!text) {
+        showToast(t("noTextToTranslate"));
+        return;
+      }
       await runTranslateFlow(text, panel);
     });
 
     document.getElementById("replymate-translate-copy").addEventListener("click", async () => {
       const resultEl = panel.querySelector("#replymate-translate-result");
       const text = resultEl ? resultEl.textContent : "";
-      if (!text) return;
       const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
       const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+      if (!text) {
+        showToast(t("nothingToCopy"));
+        return;
+      }
       await copyToClipboard(text);
-      showToast(t("copied"));
+      showToast(t("copied"), true);
     });
 
     document.body.appendChild(icon);

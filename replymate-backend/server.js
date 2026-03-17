@@ -4,7 +4,7 @@ require("dotenv").config();
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 const { PLAN_LIMITS } = require("./src/config/plans");
-const { getUser, updateUserPlan, recordUsage, testConnection, updateUserCancelScheduled, clearUserCancelScheduled, downgradeUserBySubscriptionId, syncPeriodBySubscriptionId } = require("./src/database");
+const { getUser, updateUserPlan, recordUsage, checkTranslationLimit, recordTranslationUsage, testConnection, updateUserCancelScheduled, clearUserCancelScheduled, downgradeUserBySubscriptionId, syncPeriodBySubscriptionId } = require("./src/database");
 const { getTotalTopupRemaining, createTopup } = require("./src/topup");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -39,10 +39,14 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Map plan names to Stripe price IDs
+// Map plan + billing type to Stripe price IDs (monthly / annual)
+// Monthly: STRIPE_PRICE_PRO, STRIPE_PRICE_PRO_PLUS (or _MONTHLY variants)
+// Annual: STRIPE_PRICE_PRO_ANNUAL, STRIPE_PRICE_PROPLUS_ANNUAL
 const PLAN_PRICE_IDS = {
-  pro: process.env.STRIPE_PRICE_PRO,
-  pro_plus: process.env.STRIPE_PRICE_PRO_PLUS,
+  pro_monthly: process.env.STRIPE_PRICE_PRO_MONTHLY || process.env.STRIPE_PRICE_PRO,
+  pro_annual: process.env.STRIPE_PRICE_PRO_ANNUAL,
+  pro_plus_monthly: process.env.STRIPE_PRICE_PROPLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_PLUS,
+  pro_plus_annual: process.env.STRIPE_PRICE_PROPLUS_ANNUAL,
 };
 
 // Top-up pack price IDs (one-time payment)
@@ -208,6 +212,18 @@ app.post(
         const stripeCustomerId = session.customer;
         const stripeSubscriptionId = session.subscription;
 
+        // Cancel existing subscription if user is switching plans (avoid double charge)
+        const existingUser = await getUser(userId);
+        const existingSubId = existingUser?.stripeSubscriptionId;
+        if (existingSubId && existingSubId !== stripeSubscriptionId) {
+          try {
+            await stripe.subscriptions.cancel(existingSubId);
+            console.log(`[Stripe] Cancelled previous subscription ${existingSubId} for user ${userId} (switching to new plan)`);
+          } catch (cancelErr) {
+            console.warn("[Stripe] Could not cancel previous subscription:", cancelErr.message);
+          }
+        }
+
         let periodOptions = {};
         if (stripeSubscriptionId) {
           try {
@@ -254,12 +270,14 @@ app.post(
       try {
         const periodEnd = subscription.current_period_end ?? subscription.items?.data?.[0]?.current_period_end;
         const periodStart = subscription.current_period_start ?? subscription.items?.data?.[0]?.current_period_start;
+        const cancelAtPeriodEnd = !!subscription.cancel_at_period_end;
+        const periodEndAt = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
         if (periodEnd && periodStart) {
           const periodStartIso = new Date(periodStart * 1000).toISOString();
           const periodEndIso = new Date(periodEnd * 1000).toISOString();
-          const updated = await syncPeriodBySubscriptionId(subscription.id, periodStartIso, periodEndIso);
+          const updated = await syncPeriodBySubscriptionId(subscription.id, periodStartIso, periodEndIso, cancelAtPeriodEnd, periodEndAt);
           if (updated) {
-            console.log("[Stripe] Period synced for subscription (renewal/update):", subscription.id);
+            console.log("[Stripe] Period and cancel status synced for subscription:", subscription.id);
           }
         }
       } catch (error) {
@@ -294,6 +312,12 @@ app.get("/health", (req, res) => {
   res.status(200).send("OK");
 });
 
+// Billing redirects after Stripe Checkout (success/cancel URLs)
+const BILLING_SUCCESS_URL = process.env.BILLING_SUCCESS_URL || "https://replymate.ai/upgrade?success=1";
+const BILLING_CANCEL_URL = process.env.BILLING_CANCEL_URL || "https://replymate.ai/upgrade?cancelled=1";
+app.get("/billing/success", (req, res) => res.redirect(302, BILLING_SUCCESS_URL));
+app.get("/billing/cancel", (req, res) => res.redirect(302, BILLING_CANCEL_URL));
+
 // Debug: test Supabase connection (check Render logs)
 app.get("/api/db-check", async (req, res) => {
   try {
@@ -306,9 +330,18 @@ app.get("/api/db-check", async (req, res) => {
   }
 });
 
-// Translate text (requires auth) - lightweight, no usage limit
+// Translate text (requires auth). Free: 10/day. Pro/Pro+: unlimited.
 app.post("/translate", requireAuth, async (req, res) => {
   try {
+    const userId = req.userId;
+    const usageCheck = await checkTranslationLimit(userId);
+    if (!usageCheck.allowed) {
+      return res.status(403).json({
+        error: "translation_limit_reached",
+        message: "Daily translation limit reached. Upgrade to Pro for unlimited translations.",
+      });
+    }
+
     const { text, targetLang } = req.body || {};
     if (!text || typeof text !== "string") {
       return res.status(400).json({ error: "text is required and must be a string" });
@@ -319,8 +352,10 @@ app.post("/translate", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "targetLang must be one of: en, ko, ja, es" });
     }
     const langNames = { en: "English", ko: "Korean", ja: "Japanese", es: "Spanish" };
+    const translationModel = process.env.TRANSLATION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
+    const maxTokens = Math.max(200, Math.min(2000, 100 + Math.ceil(text.length * 0.6)));
     const completion = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: translationModel,
       messages: [
         {
           role: "system",
@@ -329,10 +364,11 @@ app.post("/translate", requireAuth, async (req, res) => {
         { role: "user", content: text }
       ],
       temperature: 0.2,
-      max_tokens: 1000
+      max_tokens: maxTokens
     });
     const translated = completion.choices?.[0]?.message?.content?.trim() || "";
-    res.json({ translated });
+    await recordTranslationUsage(userId);
+    res.json({ translated, remaining: usageCheck.remaining !== null ? usageCheck.remaining - 1 : null });
   } catch (error) {
     console.error("[Translate] Error:", error?.message || error);
     res.status(500).json({ error: error?.message || "Translation failed" });
@@ -629,7 +665,7 @@ ${additionalInstruction ? `- Additional instruction/information (PRIORITY—use 
 // Create Stripe checkout session for subscription (requires auth)
 app.post("/billing/create-checkout-session", requireAuth, async (req, res) => {
   try {
-    const { targetPlan } = req.body;
+    const { targetPlan, billingType } = req.body;
     const userId = req.userId;
     const userEmail = req.headers["x-user-email"] || null;
 
@@ -639,11 +675,13 @@ app.post("/billing/create-checkout-session", requireAuth, async (req, res) => {
         .json({ error: "Invalid plan. Must be 'pro' or 'pro_plus'" });
     }
 
-    const priceId = PLAN_PRICE_IDS[targetPlan];
+    const billing = billingType === "monthly" ? "monthly" : "annual";
+    const planKey = `${targetPlan}_${billing}`;
+    const priceId = PLAN_PRICE_IDS[planKey];
     if (!priceId) {
       return res
         .status(500)
-        .json({ error: `Stripe price ID not configured for plan: ${targetPlan}` });
+        .json({ error: `Stripe price ID not configured for plan: ${targetPlan} (${billing})` });
     }
 
     const session = await stripe.checkout.sessions.create({
