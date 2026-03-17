@@ -6,8 +6,13 @@
 (function () {
   "use strict";
 
-  // Only run in main Gmail frame
+  // Only run in main frame (not in iframes)
   if (typeof window !== "undefined" && window !== window.top) return;
+
+  /** True if we're on Gmail (has extractThreadContext / findActiveReplyEditor from gmail.js). */
+  function isGmailPage() {
+    return typeof extractThreadContext === "function" && typeof findActiveReplyEditor === "function";
+  }
 
   const TRANSLATION_ICON_ID = "replymate-translation-icon";
   const TRANSLATION_PANEL_ID = "replymate-translation-panel";
@@ -54,6 +59,7 @@
     if (!text || typeof text !== "string") return "english";
     if (_gmailDetectLanguage) return _gmailDetectLanguage(text);
     const lowerText = text.toLowerCase();
+    if (/[\u4e00-\u9fff\u3400-\u4dbf]/.test(text)) return "zh";
     if (/[가-힣ㅋㅌㅎㅏ-ㅑㅒㅓㅔㅕㅟㅠㅢㅣㅡㅢㅥㅤㅦㅨㅧㅮㅯㅰㅱㅲㅴㅶㅷㅇㅈㅏㅑㅓㅒㅔㅕㅟㅠㅢㅣㅡㅢㅥㅤㅦㅨㅧㅮㅯㅰㅱㅲㅴㅶㅷㅇ]/.test(text)) return "korean";
     if (/[\u3040-\u309F\u30A0-\u30FF]/.test(text)) return "japanese";
     if (/[ñáéíóúü]/.test(lowerText) || /\b(gracias|por favor|que|para|con|estoy|tengo|hola|buenos|días|noche|favor)\b/i.test(lowerText)) return "spanish";
@@ -61,11 +67,15 @@
   }
 
   /**
-   * Map app language to API target code.
+   * Map app language or API code to API target code.
    */
   function mapToTargetCode(lang) {
-    const m = { english: "en", korean: "ko", japanese: "ja", spanish: "es" };
-    return m[lang] || "en";
+    if (!lang || typeof lang !== "string") return "en";
+    const s = lang.toLowerCase();
+    const appToCode = { english: "en", korean: "ko", japanese: "ja", spanish: "es" };
+    if (appToCode[s]) return appToCode[s];
+    if (s.length === 2) return s;
+    return "en";
   }
 
   /**
@@ -258,11 +268,11 @@
     panel.id = TRANSLATION_PANEL_ID;
     panel.style.cssText = `
       position: fixed;
-      width: 400px;
+      width: 420px;
       max-width: 92vw;
       background: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 16px 56px rgba(0,0,0,0.18), 0 0 1px rgba(0,0,0,0.08);
+      border-radius: 12px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 1px rgba(0,0,0,0.06);
       z-index: 2147483646;
       font-family: 'Google Sans', Roboto, -apple-system, sans-serif;
       font-size: 14px;
@@ -274,15 +284,15 @@
     `;
     const style = document.createElement("style");
     style.textContent = `
-      .replymate-translate-btn { padding:12px 16px;background:#7943f1;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500;text-align:left;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;box-shadow:0 2px 8px rgba(121,67,241,0.3); }
-      .replymate-translate-btn:hover { background:#6b3ad4;transform:translateY(-1px);box-shadow:0 4px 12px rgba(121,67,241,0.35); }
+      .replymate-translate-btn { padding:6px 10px;background:#7943f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;text-align:center;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;box-shadow:0 1px 4px rgba(121,67,241,0.3); flex:1; min-width:0; }
+      .replymate-translate-btn:hover { background:#6b3ad4;transform:translateY(-1px);box-shadow:0 2px 8px rgba(121,67,241,0.35); }
       .replymate-translate-btn:active { transform:translateY(0); }
       .replymate-translate-btn:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }
-      .replymate-translate-manual { padding:10px 18px;background:#7943f1;color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500;transition:background 0.2s,transform 0.15s; }
+      .replymate-translate-manual { padding:6px 12px;background:#7943f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;transition:background 0.2s,transform 0.15s; }
       .replymate-translate-manual:hover { background:#6b3ad4;transform:translateY(-1px); }
       .replymate-translate-manual:active { transform:translateY(0); }
       .replymate-translate-manual:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }
-      .replymate-translate-copy { padding:10px 18px;background:#e8eaed;color:#3c4043;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:500;transition:background 0.2s,transform 0.15s; }
+      .replymate-translate-copy { padding:6px 12px;background:#e8eaed;color:#3c4043;border:none;border-radius:6px;cursor:pointer;font-size:11px;font-weight:500;transition:background 0.2s,transform 0.15s; }
       .replymate-translate-copy:hover { background:#dadce0;transform:translateY(-1px); }
       .replymate-translate-copy:active { transform:translateY(0); }
       .replymate-translate-copy:focus-visible { outline:2px solid #7943f1;outline-offset:2px; }
@@ -291,32 +301,43 @@
       #replymate-translate-header { cursor:grab; }
       #replymate-translate-header:active { cursor:grabbing; }
       #replymate-translate-input:focus { outline:none;border-color:#7943f1;box-shadow:0 0 0 2px rgba(121,67,241,0.2); }
-      #replymate-translate-result.replymate-loading { color:#5f6368;display:flex;align-items:center;gap:8px; }
-      .replymate-spinner { width:18px;height:18px;border:2px solid #e8eaed;border-top-color:#7943f1;border-radius:50%;animation:replymate-spin 0.7s linear infinite; }
+      #replymate-translate-target:focus { outline:none;border-color:#7943f1;box-shadow:0 0 0 2px rgba(121,67,241,0.2); }
+      #replymate-translate-result.replymate-loading { color:#5f6368;display:flex;align-items:center;gap:6px; }
+      .replymate-spinner { width:14px;height:14px;border:2px solid #e8eaed;border-top-color:#7943f1;border-radius:50%;animation:replymate-spin 0.7s linear infinite; }
       @keyframes replymate-spin { to { transform:rotate(360deg); } }
     `;
     document.head.appendChild(style);
 
+    const logoUrl = typeof chrome !== "undefined" && chrome.runtime?.getURL ? chrome.runtime.getURL("icons/icon32.png") : "";
     panel.innerHTML = `
-      <div id="replymate-translate-header" style="padding:14px 16px;background:linear-gradient(135deg,#7943f1 0%,#9d6cf7 100%);color:#fff;display:flex;justify-content:space-between;align-items:center;user-select:none;">
-        <span id="replymate-translate-title" style="font-weight:600;font-size:15px;letter-spacing:0.02em;">ReplyMate Translate</span>
-        <button id="replymate-translate-close" style="background:rgba(255,255,255,0.25);border:none;cursor:pointer;font-size:18px;color:#fff;width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>
+      <div id="replymate-translate-header" style="padding:8px 12px;background:linear-gradient(135deg,#7943f1 0%,#9d6cf7 100%);color:#fff;display:flex;justify-content:space-between;align-items:center;user-select:none;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${logoUrl ? `<img src="${logoUrl}" alt="ReplyMate" style="width:18px;height:18px;border-radius:4px;flex-shrink:0;" />` : ""}
+          <span id="replymate-translate-title" style="font-weight:600;font-size:13px;letter-spacing:0.02em;">ReplyMate Translate</span>
+        </div>
+        <button id="replymate-translate-close" style="background:rgba(255,255,255,0.25);border:none;cursor:pointer;font-size:16px;color:#fff;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>
       </div>
-      <div style="padding:16px;background:#fafafa;">
-        <div style="display:flex;flex-direction:column;gap:14px;">
-          <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="padding:12px;background:#fafafa;">
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div id="replymate-translate-gmail-buttons" style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;">
             <button id="replymate-translate-latest" class="replymate-translate-btn">Translate latest message</button>
             <button id="replymate-translate-reply" class="replymate-translate-btn">Translate reply</button>
           </div>
           <div>
-            <label id="replymate-translate-paste-label" style="font-size:12px;color:#5f6368;margin-bottom:6px;display:block;">Paste text to translate</label>
-            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="3" style="width:100%;padding:12px 14px;border:1px solid #dadce0;border-radius:10px;font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit;background:#fff;"></textarea>
-            <button id="replymate-translate-manual" class="replymate-translate-manual" style="margin-top:10px;">Translate</button>
+            <label id="replymate-translate-to-label" style="font-size:11px;color:#5f6368;margin-bottom:3px;display:block;">Translate to</label>
+            <select id="replymate-translate-target" style="width:100%;padding:6px 10px;border:1px solid #dadce0;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:inherit;background:#fff;margin-bottom:8px;cursor:pointer;">
+              <option value="">System Language</option>
+            </select>
           </div>
           <div>
-            <label id="replymate-translate-result-label" style="font-size:12px;color:#5f6368;margin-bottom:6px;display:block;">Result</label>
-            <div id="replymate-translate-result" data-placeholder="" style="min-height:100px;max-height:280px;overflow-y:scroll;overflow-x:hidden;padding:14px;padding-bottom:24px;box-sizing:border-box;border:1px solid #e8eaed;border-radius:10px;background:#fff;white-space:pre-wrap;word-break:break-word;font-size:14px;color:#202124;line-height:1.5;transition:border-color 0.2s,box-shadow 0.2s;"></div>
-            <button id="replymate-translate-copy" class="replymate-translate-copy" style="margin-top:10px;">Copy</button>
+            <label id="replymate-translate-paste-label" style="font-size:11px;color:#5f6368;margin-bottom:3px;display:block;">Paste text to translate</label>
+            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="5" style="width:100%;min-height:100px;padding:10px;border:1px solid #dadce0;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit;background:#fff;"></textarea>
+            <button id="replymate-translate-manual" class="replymate-translate-manual" style="margin-top:6px;">Translate</button>
+          </div>
+          <div>
+            <label id="replymate-translate-result-label" style="font-size:11px;color:#5f6368;margin-bottom:3px;display:block;">Result</label>
+            <div id="replymate-translate-result" data-placeholder="" style="min-height:140px;max-height:400px;overflow-y:scroll;overflow-x:hidden;padding:10px;box-sizing:border-box;border:1px solid #e8eaed;border-radius:6px;background:#fff;white-space:pre-wrap;word-break:break-word;font-size:13px;color:#202124;line-height:1.5;transition:border-color 0.2s,box-shadow 0.2s;"></div>
+            <button id="replymate-translate-copy" class="replymate-translate-copy" style="margin-top:6px;">Copy</button>
           </div>
         </div>
       </div>
@@ -335,6 +356,26 @@
 
     const titleEl = document.getElementById("replymate-translate-title");
     if (titleEl) titleEl.textContent = t("translatePanelTitle");
+
+    const gmailBtns = document.getElementById("replymate-translate-gmail-buttons");
+    if (gmailBtns) gmailBtns.style.display = isGmailPage() ? "flex" : "none";
+
+    const toLabel = document.getElementById("replymate-translate-to-label");
+    if (toLabel) toLabel.textContent = t("translateToLabel");
+
+    const targetSelect = document.getElementById("replymate-translate-target");
+    if (targetSelect) {
+      const opts = targetSelect.querySelectorAll("option");
+      if (opts[0]) opts[0].textContent = t("systemLanguage");
+      if (typeof window.REPLYMATE_TARGET_LANGUAGES !== "undefined" && targetSelect.options.length <= 1) {
+        window.REPLYMATE_TARGET_LANGUAGES.forEach(({ code, name }) => {
+          const opt = document.createElement("option");
+          opt.value = code;
+          opt.textContent = name;
+          targetSelect.appendChild(opt);
+        });
+      }
+    }
 
     const els = {
       latest: document.getElementById("replymate-translate-latest"),
@@ -386,6 +427,17 @@
   }
 
   /**
+   * Get effective target language code: from dropdown, or user's default when "My language".
+   */
+  async function getEffectiveTargetCode(panel) {
+    const sel = panel && panel.querySelector("#replymate-translate-target");
+    const chosen = sel && sel.value ? String(sel.value).trim() : "";
+    if (chosen) return chosen;
+    const userLang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
+    return mapToTargetCode(userLang);
+  }
+
+  /**
    * Run translation flow: detect language, skip if same, else translate.
    */
   async function runTranslateFlow(sourceText, panel) {
@@ -396,9 +448,11 @@
 
     const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
     const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+    const targetCode = await getEffectiveTargetCode(panel);
 
     const detected = detectLanguageForTranslation(sourceText);
-    if (detected === lang) {
+    const detectedCode = mapToTargetCode(detected);
+    if (detectedCode === targetCode) {
       setResult(panel, t("alreadyInYourLanguage"));
       return;
     }
@@ -407,7 +461,7 @@
     if (resultEl) resultEl.dataset.placeholder = t("translating");
     setResult(panel, "", false, true);
     try {
-      const translated = await translateText(sourceText, lang);
+      const translated = await translateText(sourceText, targetCode);
       setResult(panel, translated);
     } catch (err) {
       const msg = err.message || String(err);

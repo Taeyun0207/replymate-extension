@@ -143,6 +143,8 @@ const TRANSLATIONS = {
     translatePanelTitle: "ReplyMate Translate",
     translatePasteLabel: "Paste text to translate",
     translateResultLabel: "Result",
+    translateToLabel: "Translate to",
+    systemLanguage: "System Language",
     translating: "Translating..."
   },
   korean: {
@@ -188,6 +190,8 @@ const TRANSLATIONS = {
     translatePanelTitle: "ReplyMate 번역",
     translatePasteLabel: "번역할 텍스트 붙여넣기",
     translateResultLabel: "번역 결과",
+    translateToLabel: "번역 대상 언어",
+    systemLanguage: "시스템 언어",
     translating: "번역 중..."
   },
   japanese: {
@@ -233,6 +237,8 @@ const TRANSLATIONS = {
     translatePanelTitle: "ReplyMate 翻訳",
     translatePasteLabel: "翻訳するテキストを貼り付け",
     translateResultLabel: "翻訳結果",
+    translateToLabel: "翻訳先",
+    systemLanguage: "システム言語",
     translating: "翻訳中..."
   },
   spanish: {
@@ -278,6 +284,8 @@ const TRANSLATIONS = {
     translatePanelTitle: "ReplyMate Traducir",
     translatePasteLabel: "Pega texto para traducir",
     translateResultLabel: "Resultado",
+    translateToLabel: "Traducir a",
+    systemLanguage: "Idioma del sistema",
     translating: "Traduciendo..."
   }
 };
@@ -287,6 +295,8 @@ function getTranslation(key, language = DEFAULT_LANGUAGE) {
   const lang = TRANSLATIONS[language] || TRANSLATIONS.english;
   return lang[key] || TRANSLATIONS.english[key] || key;
 }
+// Expose on window so translation-common does not overwrite with a partial set on Gmail
+if (typeof window !== "undefined") window.getTranslation = getTranslation;
 
 // Check if error is "Extension context invalidated" (happens when extension is reloaded while page is open)
 function isExtensionContextInvalidated(error) {
@@ -1510,10 +1520,15 @@ Length: ${finalLength}
       });
     };
 
-    const replyData = await generateAIReplyStreaming(payload, editor, {
-      onFirstChunk: hideUI,
-      onComplete: showUI,
-    });
+    let replyData;
+    try {
+      replyData = await generateAIReplyStreaming(payload, editor, {
+        onFirstChunk: hideUI,
+        onComplete: showUI,
+      });
+    } finally {
+      showUI();
+    }
     console.log("[ReplyMate DEBUG] Streaming complete:", replyData ? "success" : "failed");
     
     if (!replyData) {
@@ -2475,10 +2490,15 @@ Length: ${finalLength}
           });
         };
 
-        const replyData = await generateAIReplyStreaming(payload, replyEditor, {
-          onFirstChunk: hideUI,
-          onComplete: showUI,
-        });
+        let replyData;
+        try {
+          replyData = await generateAIReplyStreaming(payload, replyEditor, {
+            onFirstChunk: hideUI,
+            onComplete: showUI,
+          });
+        } finally {
+          showUI();
+        }
   
         if (!replyData) {
           showUI();

@@ -21,6 +21,12 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*.png"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "host_permissions": [
     "https://mail.google.com/*",
     "https://replymate-backend-bot8.onrender.com/*",
@@ -38,10 +44,21 @@
       "js": [
         "lib/auth-config.js",
         "lib/auth-shared.js",
-        "content/gmail.js",
-        "content/translation.js"
+        "content/gmail.js"
       ],
       "all_frames": true
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "lib/auth-config.js",
+        "lib/auth-shared.js",
+        "content/translation-common.js",
+        "content/translation.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "action": {

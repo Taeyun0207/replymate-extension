@@ -347,11 +347,16 @@ app.post("/translate", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "text is required and must be a string" });
     }
     const target = (targetLang || "en").toLowerCase();
-    const validTargets = ["en", "ko", "ja", "es"];
+    const langNames = {
+      en: "English", zh: "Chinese", es: "Spanish", fr: "French", de: "German",
+      ja: "Japanese", ko: "Korean", pt: "Portuguese", ar: "Arabic", ru: "Russian",
+      hi: "Hindi", it: "Italian", vi: "Vietnamese", th: "Thai", id: "Indonesian",
+      tr: "Turkish", nl: "Dutch", pl: "Polish"
+    };
+    const validTargets = Object.keys(langNames);
     if (!validTargets.includes(target)) {
-      return res.status(400).json({ error: "targetLang must be one of: en, ko, ja, es" });
+      return res.status(400).json({ error: `targetLang must be one of: ${validTargets.join(", ")}` });
     }
-    const langNames = { en: "English", ko: "Korean", ja: "Japanese", es: "Spanish" };
     const translationModel = process.env.TRANSLATION_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini";
     const maxTokens = Math.max(200, Math.min(2000, 100 + Math.ceil(text.length * 0.6)));
     const completion = await openai.chat.completions.create({
