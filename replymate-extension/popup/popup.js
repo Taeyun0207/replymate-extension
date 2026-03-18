@@ -771,7 +771,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Manage Subscription link - opens upgrade page
   const manageSubscriptionLink = document.getElementById("manageSubscriptionLink");
   if (manageSubscriptionLink) {
-    const upgradeUrl = (typeof REPLYMATE_UPGRADE_URL !== "undefined" ? REPLYMATE_UPGRADE_URL : "https://taeyun0207.github.io/replymate-site/upgrade/index.html");
+    const upgradeUrl = (typeof REPLYMATE_UPGRADE_URL !== "undefined" ? REPLYMATE_UPGRADE_URL : "https://replymateai.app/upgrade");
     manageSubscriptionLink.href = upgradeUrl;
     manageSubscriptionLink.target = "_blank";
     manageSubscriptionLink.rel = "noopener noreferrer";

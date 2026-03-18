@@ -73,7 +73,7 @@ Values: `'monthly'`, `'annual'`, or `null` (free users).
 
 ## 2b. Translation usage columns (optional)
 
-For translation limits: free users get 15/day; Pro/Pro+ unlimited.
+For translation limits: free 15/day; Pro 1000/month; Pro+ unlimited.
 
 ```sql
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS translation_used INTEGER DEFAULT 0;
@@ -147,8 +147,8 @@ CREATE POLICY "Service role full access" ON public.stripe_webhook_events
 Optional aliases: `STRIPE_PRICE_PRO_MONTHLY` / `STRIPE_PRICE_PROPLUS_MONTHLY` override the above if set.
 
 **Billing redirect URLs** (optional): After Stripe Checkout, users are redirected. Defaults:
-- `BILLING_SUCCESS_URL` – default `https://replymate.ai/upgrade?success=1`
-- `BILLING_CANCEL_URL` – default `https://replymate.ai/upgrade?cancelled=1`
+- `BILLING_SUCCESS_URL` – default `https://replymateai.app/upgrade?success=1`
+- `BILLING_CANCEL_URL` – default `https://replymateai.app/upgrade?cancelled=1`
 
 **Top-up Stripe setup:** Create two one-time prices in Stripe ($3.99 for 100 replies, $7.99 for 500 replies) and add to `.env`:
 - `STRIPE_PRICE_TOPUP_100` – price ID for +100 replies pack

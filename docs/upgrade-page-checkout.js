@@ -1,7 +1,7 @@
 /**
  * ReplyMate Upgrade Page - Checkout Integration
  *
- * Add this script to your upgrade page (e.g. taeyun0207.github.io/replymate-site/upgrade/index.html)
+ * Add this script to your upgrade page (e.g. replymateai.app/upgrade)
  * along with Supabase and the config below.
  *
  * 1. Add to your HTML <head>:
@@ -12,7 +12,7 @@
  *      window.REPLYMATE_BACKEND = "https://replymate-backend-bot8.onrender.com";
  *      window.REPLYMATE_SUPABASE_URL = "https://cmmoirdihefyswerkkay.supabase.co";
  *      window.REPLYMATE_SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."; // same as extension
- *      window.REPLYMATE_UPGRADE_URL = "https://taeyun0207.github.io/replymate-site/upgrade/index.html"; // redirect after sign-in
+ *      window.REPLYMATE_UPGRADE_URL = "https://replymateai.app/upgrade"; // redirect after sign-in
  *    </script>
  *    <script src="upgrade-page-checkout.js"></script>
  *
@@ -47,7 +47,7 @@
   async function signInWithGoogle() {
     const isLocalhost = /localhost|127\.0\.0\.1/i.test(window.location.hostname);
     const redirectTo = isLocalhost
-      ? (window.REPLYMATE_UPGRADE_URL || "https://taeyun0207.github.io/replymate-site/upgrade/index.html")
+      ? (window.REPLYMATE_UPGRADE_URL || "https://replymateai.app/upgrade")
       : window.location.href;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",

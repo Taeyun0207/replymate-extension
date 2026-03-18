@@ -1,6 +1,6 @@
 # ReplyMate Payment Setup Guide
 
-This guide explains how to enable payments on your upgrade page (https://taeyun0207.github.io/replymate-site/upgrade/index.html).
+This guide explains how to enable payments on your upgrade page (https://replymateai.app/upgrade).
 
 ---
 
@@ -28,9 +28,9 @@ Your `.env` has:
 
 1. Go to **Supabase Dashboard** → **Authentication** → **URL Configuration**
 2. Under **Redirect URLs**, add:
-   - `https://taeyun0207.github.io/replymate-site/upgrade/index.html`
-   - `https://taeyun0207.github.io/replymate-site/**` (or the exact path)
-3. Set **Site URL** to `https://taeyun0207.github.io` (or your main domain)
+   - `https://replymateai.app/upgrade`
+   - `https://replymateai.app/**` (or the exact path)
+3. Set **Site URL** to `https://replymateai.app` (or your main domain)
 
 If localhost is listed and you get "localhost refused to connect" after sign-in, remove localhost or ensure the upgrade page is opened from the production URL.
 
@@ -45,8 +45,7 @@ The upgrade page needs Google Sign-In (same Supabase project as the extension).
 3. Under **Authorized redirect URIs**, add:
    - `https://cmmoirdihefyswerkkay.supabase.co/auth/v1/callback` (if not already there)
 4. Under **Authorized JavaScript origins**, add:
-   - `https://taeyun0207.github.io`
-   - `https://taeyun0207.github.io/replymate-site`
+   - `https://replymateai.app`
 
 ---
 
@@ -72,7 +71,7 @@ Your upgrade page must:
 <script src="./upgrade-page-checkout.js"></script>
 ```
 
-Copy `docs/upgrade-page-checkout.js` from this repo into your replymate-site project (e.g. next to `upgrade/index.html`) and reference it as above.
+Copy `docs/upgrade-page-checkout.js` from this repo into your upgrade page project (e.g. next to `upgrade/index.html` on replymateai.app) and reference it as above.
 
 ### Add data attributes to your buttons
 

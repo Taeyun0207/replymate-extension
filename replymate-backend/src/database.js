@@ -361,15 +361,15 @@ async function recordStripeEventProcessed(eventId) {
 }
 
 /**
- * Check if user can translate (does not consume). Free: 15/day. Pro/Pro+: unlimited.
+ * Check if user can translate (does not consume). Free: 15/day. Pro: 1000/month. Pro+: unlimited.
  * Returns { allowed: boolean, remaining?: number }.
  */
 async function checkTranslationLimit(userId) {
-  const { getTranslationLimit } = require("./config/plans");
+  const { getTranslationLimit, getTranslationResetType } = require("./config/plans");
 
   const { data: row, error: fetchErr } = await supabase
     .from(TABLE_NAME)
-    .select("plan, translation_used, translation_reset_at")
+    .select("plan, translation_used, translation_reset_at, next_reset_at")
     .eq("user_id", userId)
     .single();
 
@@ -384,6 +384,7 @@ async function checkTranslationLimit(userId) {
   const nowMs = now.getTime();
   let translationUsed = row.translation_used ?? 0;
   let translationResetAt = row.translation_reset_at;
+  const resetType = getTranslationResetType(plan);
 
   const startOfNextDayUtc = () => {
     const d = new Date(now);
@@ -391,6 +392,9 @@ async function checkTranslationLimit(userId) {
     return d.toISOString();
   };
 
+  if (resetType === "monthly" && (!translationResetAt || nowMs >= new Date(translationResetAt).getTime())) {
+    translationResetAt = row.next_reset_at;
+  }
   if (!translationResetAt || nowMs >= new Date(translationResetAt).getTime()) {
     translationUsed = 0;
   }
@@ -403,11 +407,11 @@ async function checkTranslationLimit(userId) {
  * Consume one translation for the user. Call only after successful translation.
  */
 async function recordTranslationUsage(userId) {
-  const { getTranslationLimit } = require("./config/plans");
+  const { getTranslationLimit, getTranslationResetType } = require("./config/plans");
 
   const { data: row, error: fetchErr } = await supabase
     .from(TABLE_NAME)
-    .select("plan, translation_used, translation_reset_at")
+    .select("plan, translation_used, translation_reset_at, next_reset_at")
     .eq("user_id", userId)
     .single();
 
@@ -421,6 +425,7 @@ async function recordTranslationUsage(userId) {
   const nowMs = now.getTime();
   let translationUsed = row.translation_used ?? 0;
   let translationResetAt = row.translation_reset_at;
+  const resetType = getTranslationResetType(plan);
 
   const startOfNextDayUtc = () => {
     const d = new Date(now);
@@ -430,7 +435,7 @@ async function recordTranslationUsage(userId) {
 
   if (!translationResetAt || nowMs >= new Date(translationResetAt).getTime()) {
     translationUsed = 0;
-    translationResetAt = startOfNextDayUtc();
+    translationResetAt = resetType === "monthly" ? (row.next_reset_at || startOfNextDayUtc()) : startOfNextDayUtc();
   }
 
   const { error: updateErr } = await supabase

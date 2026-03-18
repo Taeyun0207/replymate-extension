@@ -64,4 +64,4 @@ ReplyMate requires Google sign-in to generate AI replies. Configure Supabase:
 ReplyMate respects user privacy and does not store email content.
 
 Privacy Policy:
-https://taeyun0207.github.io/replymate-legal/privacy.html
+https://replymateai.app/privacy

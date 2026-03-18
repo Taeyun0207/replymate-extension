@@ -1,6 +1,6 @@
 /**
  * Auth sync between ReplyMate website (homepage/upgrade) and extension popup.
- * Runs on taeyun0207.github.io/replymate-site and localhost.
+ * Runs on replymateai.app, taeyun0207.github.io/replymate-site and localhost.
  * - Website login -> chrome.storage (popup sees it)
  * - Popup login -> localStorage (website sees it)
  */
