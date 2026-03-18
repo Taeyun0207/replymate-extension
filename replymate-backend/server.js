@@ -327,6 +327,14 @@ app.post(
     if (event.type === "customer.subscription.updated") {
       const subscription = event.data.object;
       try {
+        // If subscription ended (canceled/unpaid), downgrade immediately
+        const status = subscription.status;
+        if (status === "canceled" || status === "unpaid") {
+          await downgradeUserBySubscriptionId(subscription.id);
+          console.log("[Stripe] User downgraded (subscription status:", status, "):", subscription.id);
+          return res.status(200).json({ received: true });
+        }
+
         const periodEnd = subscription.current_period_end ?? subscription.items?.data?.[0]?.current_period_end;
         const periodStart = subscription.current_period_start ?? subscription.items?.data?.[0]?.current_period_start;
         const cancelAtPeriodEnd = !!subscription.cancel_at_period_end;
