@@ -17,12 +17,17 @@
  *      window.REPLYMATE_SUPABASE_URL = "https://cmmoirdihefyswerkkay.supabase.co";
  *      window.REPLYMATE_SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."; // same as extension
  *      window.REPLYMATE_UPGRADE_URL = "https://replymateai.app/upgrade"; // redirect after sign-in
+ *      window.REPLYMATE_SWITCH_VIA_PORTAL = true; // Switch opens portal; DB updated from webhook (user picks any plan)
  *    </script>
  *    <script src="upgrade-page-checkout.js"></script>
  *
  * 3. Add data attributes to your buttons:
  *    Upgrade: <button data-replymate-plan="pro" data-replymate-billing="annual">Upgrade to Pro</button>
+ *    Switch:  <button data-replymate-switch>Switch to Pro Annual</button> (opens portal; user picks plan there)
  *    Cancel:  <button data-replymate-cancel>Cancel subscription</button>
+ *
+ *    When REPLYMATE_SWITCH_VIA_PORTAL = true (default): Switch uses create-portal-session → user picks in portal.
+ *    When false: Switch uses create-checkout-session with subscriptionChange → forces the button's plan.
  *
  * 4. Success banner: Add <div id="replymate-success-banner" style="display:none">...</div> and it will
  *    be shown when success=1, switch=1, or session_id is present. session_id is optional (for future use).
@@ -88,10 +93,81 @@
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Checkout failed");
 
-    if (data.checkoutUrl) {
-      window.location.href = data.checkoutUrl;
+    const url = data.checkoutUrl || data.url || data.checkout_url || data.redirectUrl || data.redirect_url || data.successUrl || data.success_url;
+    if (url) {
+      window.location.href = url;
     } else {
       throw new Error("No checkout URL received");
+    }
+  }
+
+  async function createPortalSession() {
+    const token = await getAccessToken();
+    if (!token) {
+      await signInWithGoogle();
+      return;
+    }
+
+    const upgradeUrl = window.REPLYMATE_UPGRADE_URL || "https://replymateai.app/upgrade";
+    const returnUrl = upgradeUrl + (upgradeUrl.includes("?") ? "&" : "?") + "success=1&switch=1";
+
+    const res = await fetch(`${BACKEND}/billing/create-portal-session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({ returnUrl })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Portal failed");
+
+    const portalUrl = data.url || data.checkoutUrl || data.redirectUrl || data.portalUrl;
+    if (portalUrl) {
+      window.location.href = portalUrl;
+    } else {
+      throw new Error("No portal URL received");
+    }
+  }
+
+  async function switchPlan(plan, billingType) {
+    const usePortal = window.REPLYMATE_SWITCH_VIA_PORTAL !== false;
+    if (usePortal) {
+      await createPortalSession();
+    } else {
+      await createCheckoutWithSubscriptionChange(plan, billingType);
+    }
+  }
+
+  async function createCheckoutWithSubscriptionChange(plan, billingType) {
+    const token = await getAccessToken();
+    if (!token) {
+      await signInWithGoogle();
+      return;
+    }
+
+    const res = await fetch(`${BACKEND}/billing/create-checkout-session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        targetPlan: plan,
+        billingType: billingType || "annual",
+        subscriptionChange: true
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Switch failed");
+
+    const url = data.checkoutUrl || data.url || data.checkout_url || data.redirectUrl || data.redirect_url || data.successUrl || data.success_url;
+    if (url) {
+      window.location.href = url;
+    } else {
+      throw new Error("No redirect URL received");
     }
   }
 
@@ -166,6 +242,27 @@
         }
       });
       btn.setAttribute("data-replymate-original-text", btn.textContent);
+    });
+
+    document.querySelectorAll("[data-replymate-switch]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.preventDefault();
+        const plan = btn.getAttribute("data-replymate-plan") || "pro";
+        const billing = btn.getAttribute("data-replymate-billing") || "annual";
+        if (!["pro", "pro_plus"].includes(plan)) return;
+
+        btn.disabled = true;
+        const originalText = btn.textContent;
+        btn.textContent = "Loading...";
+        try {
+          await switchPlan(plan, billing);
+        } catch (err) {
+          console.error("[ReplyMate Upgrade]", err);
+          alert(err.message || "Something went wrong. Please try again.");
+          btn.disabled = false;
+          btn.textContent = originalText;
+        }
+      });
     });
 
     document.querySelectorAll("[data-replymate-cancel]").forEach((btn) => {

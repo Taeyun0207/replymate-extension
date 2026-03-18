@@ -177,21 +177,21 @@ async function updateUserPlan(
   }
 
   console.log("[DB] Inserting new user with plan:", userId, plan);
+  const insertData = {
+    userId,
+    plan,
+    used: 0,
+    billingCycleStart,
+    nextResetAt: nextReset,
+    stripeCustomerId,
+    stripeSubscriptionId,
+    createdAt: now,
+    updatedAt: now,
+  };
+  if (options.billingInterval !== undefined) insertData.billingInterval = options.billingInterval;
   const { data, error } = await supabase
     .from(TABLE_NAME)
-    .insert(
-      toDb({
-        userId,
-        plan,
-        used: 0,
-        billingCycleStart,
-        nextResetAt: nextReset,
-        stripeCustomerId,
-        stripeSubscriptionId,
-        createdAt: now,
-        updatedAt: now,
-      })
-    )
+    .insert(toDb(insertData))
     .select()
     .single();
 
@@ -269,7 +269,7 @@ async function clearUserCancelScheduled(userId) {
   if (error) throw error;
 }
 
-async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, periodEndIso, cancelAtPeriodEnd = null, periodEndAt = null, billingInterval = null) {
+async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, periodEndIso, cancelAtPeriodEnd = null, periodEndAt = null, billingInterval = null, plan = null) {
   const now = new Date().toISOString();
   const updates = {
     billing_cycle_start: periodStartIso,
@@ -277,6 +277,7 @@ async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, period
     updated_at: now,
   };
   if (billingInterval !== null) updates.billing_interval = billingInterval;
+  if (plan !== null && ["pro", "pro_plus"].includes(plan)) updates.plan = plan;
   if (cancelAtPeriodEnd !== null) {
     updates.cancel_at_period_end = !!cancelAtPeriodEnd;
     updates.period_end_at = cancelAtPeriodEnd ? periodEndAt : null;

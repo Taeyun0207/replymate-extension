@@ -150,6 +150,22 @@ If the upgrade page shows only "Cancel subscription" (or blank) after Google sig
 
 ---
 
-## 9. Full Option: API-Based Checkout on the Page
+## 9. Troubleshooting: Switch Button Updates Wrong Plan in Database
+
+If the user clicks "Switch to Pro Annual" but buys Pro+ Monthly in the Customer Portal, and the database shows Pro Annual instead of Pro+ Monthly:
+
+1. **Use the portal for Switch** – Set `window.REPLYMATE_SWITCH_VIA_PORTAL = true` in your upgrade page config. The Switch button must call `POST /billing/create-portal-session` (opens Stripe portal), not `create-checkout-session` with `subscriptionChange: true`. When using `subscriptionChange`, the backend forces the button’s plan before the user sees the portal.
+
+2. **Switch button markup** – Use `data-replymate-switch` so the script uses the portal:
+   ```html
+   <button data-replymate-switch data-replymate-plan="pro" data-replymate-billing="annual">Switch to Pro Annual</button>
+   ```
+   With `REPLYMATE_SWITCH_VIA_PORTAL = true`, the plan/billing attributes are only used when the portal is off; the user chooses the plan in the portal.
+
+3. **Webhook** – The database is updated from Stripe’s `customer.subscription.updated` webhook. Ensure the webhook endpoint is configured and `STRIPE_WEBHOOK_SECRET` is set.
+
+---
+
+## 10. Full Option: API-Based Checkout on the Page
 
 See `upgrade-page-checkout.js` in this folder for a ready-to-use script.

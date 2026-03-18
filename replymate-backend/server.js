@@ -48,6 +48,11 @@ const PLAN_PRICE_IDS = {
   pro_plus_monthly: process.env.STRIPE_PRICE_PRO_PLUS_MONTHLY || process.env.STRIPE_PRICE_PROPLUS_MONTHLY || process.env.STRIPE_PRICE_PRO_PLUS,
   pro_plus_annual: process.env.STRIPE_PRICE_PRO_PLUS_ANNUAL || process.env.STRIPE_PRICE_PROPLUS_ANNUAL,
 };
+// Map price ID → plan (for customer.subscription.updated when plan changes via portal)
+const PRICE_ID_TO_PLAN = {};
+for (const [key, id] of Object.entries(PLAN_PRICE_IDS)) {
+  if (id) PRICE_ID_TO_PLAN[id] = key.startsWith("pro_plus") ? "pro_plus" : "pro";
+}
 
 // Top-up pack price IDs (one-time payment)
 const TOPUP_PRICE_IDS = {
@@ -230,8 +235,13 @@ app.post(
           return res.status(400).json({ error: "Missing required metadata" });
         }
 
-        const stripeCustomerId = session.customer;
-        const stripeSubscriptionId = session.subscription;
+        const stripeCustomerId = typeof session.customer === "string" ? session.customer : session.customer?.id;
+        const stripeSubscriptionId = typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
+
+        if (!stripeCustomerId || !stripeSubscriptionId) {
+          console.error("Missing customer or subscription in checkout session:", session.id);
+          return res.status(400).json({ error: "Invalid checkout session: missing customer or subscription" });
+        }
 
         // Cancel existing subscription if user is switching plans (avoid double charge)
         const existingUser = await getUser(userId);
@@ -269,7 +279,8 @@ app.post(
             const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId);
             const periodEnd = subscription.current_period_end ?? subscription.items?.data?.[0]?.current_period_end;
             const periodStart = subscription.current_period_start ?? subscription.items?.data?.[0]?.current_period_start;
-            const interval = subscription.items?.data?.[0]?.plan?.interval;
+            const item = subscription.items?.data?.[0];
+            const interval = item?.plan?.interval ?? item?.price?.recurring?.interval;
             let billingInterval = interval === "year" ? "annual" : interval === "month" ? "monthly" : null;
             if (!billingInterval && (meta.billingType === "monthly" || meta.billingType === "annual")) billingInterval = meta.billingType;
             if (periodEnd && periodStart) {
@@ -320,12 +331,15 @@ app.post(
         const periodStart = subscription.current_period_start ?? subscription.items?.data?.[0]?.current_period_start;
         const cancelAtPeriodEnd = !!subscription.cancel_at_period_end;
         const periodEndAt = periodEnd ? new Date(periodEnd * 1000).toISOString() : null;
-        const interval = subscription.items?.data?.[0]?.plan?.interval;
+        const item = subscription.items?.data?.[0];
+        const interval = item?.plan?.interval ?? item?.price?.recurring?.interval;
         const billingInterval = interval === "year" ? "annual" : interval === "month" ? "monthly" : null;
+        const priceId = item?.price?.id ?? item?.plan?.id;
+        const plan = priceId ? PRICE_ID_TO_PLAN[priceId] : null;
         if (periodEnd && periodStart) {
           const periodStartIso = new Date(periodStart * 1000).toISOString();
           const periodEndIso = new Date(periodEnd * 1000).toISOString();
-          const updated = await syncPeriodBySubscriptionId(subscription.id, periodStartIso, periodEndIso, cancelAtPeriodEnd, periodEndAt, billingInterval);
+          const updated = await syncPeriodBySubscriptionId(subscription.id, periodStartIso, periodEndIso, cancelAtPeriodEnd, periodEndAt, billingInterval, plan);
           if (updated) {
             console.log("[Stripe] Period and cancel status synced for subscription:", subscription.id);
           }
