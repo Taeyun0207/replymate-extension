@@ -931,7 +931,7 @@ app.post("/billing/create-topup-checkout", requireAuth, async (req, res) => {
   }
 });
 
-// Create Stripe billing portal session (for Switch flow when REPLYMATE_SWITCH_VIA_PORTAL = true)
+// Create Stripe billing portal session (Switch flow: monthly ↔ annual only)
 app.post("/billing/create-portal-session", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
