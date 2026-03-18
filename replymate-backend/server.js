@@ -931,6 +931,27 @@ app.post("/billing/create-topup-checkout", requireAuth, async (req, res) => {
   }
 });
 
+// Create Stripe billing portal session (for Switch flow when REPLYMATE_SWITCH_VIA_PORTAL = true)
+app.post("/billing/create-portal-session", requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId;
+    const user = await getUser(userId);
+    const stripeCustomerId = user?.stripeCustomerId;
+    if (!stripeCustomerId) {
+      return res.status(400).json({ error: "No subscription found. Use upgrade flow instead." });
+    }
+    const returnUrl = req.body?.returnUrl || BILLING_SUCCESS_URL;
+    const session = await stripe.billingPortal.sessions.create({
+      customer: stripeCustomerId,
+      return_url: returnUrl,
+    });
+    res.json({ url: session.url });
+  } catch (error) {
+    console.error("Stripe portal session error:", error);
+    res.status(500).json({ error: "Failed to create portal session" });
+  }
+});
+
 // Cancel subscription at period end (requires auth)
 app.post("/billing/cancel-subscription", requireAuth, async (req, res) => {
   try {
