@@ -891,28 +891,34 @@ function findDiscardButton(searchRoot) {
 }
 
 /**
- * Find toolbar for compose. We append AI Reply with margin-left:auto to push it right.
- * Works for EN, KO, JA, ES - no button-specific insertion needed.
+ * Find toolbar for compose. Prefer inserting after Cancel for consistent order [Send][Cancel][AI Reply].
+ * Scopes search to compose root when available to avoid wrong toolbar with multiple composes.
  */
 function findOutlookComposeInjectionPoint(editor) {
   if (!editor || !(editor instanceof HTMLElement)) return null;
 
   const doc = editor.ownerDocument || document;
+  const composeRoot = getComposeRootWithSend(editor);
+  const searchRoot = composeRoot || doc.body;
 
-  const discardBtn = findDiscardButton(doc.body);
+  const discardBtn = findDiscardButton(searchRoot);
   if (discardBtn) {
     const footer = discardBtn.closest("div[role='toolbar']") || discardBtn.closest("div[style*='flex']") || discardBtn.parentElement;
-    if (footer && !footer.querySelector(".replymate-button-wrapper")) return { container: footer };
+    if (footer && !footer.querySelector(".replymate-button-wrapper")) {
+      return { container: footer, insertAfter: discardBtn };
+    }
   }
 
   const toolbar = findSendCancelToolbar(editor);
-  if (toolbar && !toolbar.querySelector(".replymate-button-wrapper")) return { container: toolbar };
+  if (toolbar && !toolbar.querySelector(".replymate-button-wrapper")) return { container: toolbar, insertAfter: null };
 
-  const toolbars = doc.body.querySelectorAll("div[role='toolbar']");
+  const toolbars = (composeRoot || doc.body).querySelectorAll("div[role='toolbar']");
   for (const t of toolbars) {
     const hasSend = Array.from(t.querySelectorAll("[role='button'], button")).some((b) => isSendButton((b.textContent || "").trim(), b.getAttribute("aria-label") || ""));
     const discard = findDiscardButton(t);
-    if ((hasSend || discard) && !t.querySelector(".replymate-button-wrapper")) return { container: t };
+    if ((hasSend || discard) && !t.querySelector(".replymate-button-wrapper")) {
+      return { container: t, insertAfter: discard || null };
+    }
   }
 
   return null;
@@ -964,8 +970,12 @@ async function injectButtonIntoComposeAreas() {
       point.container.style.flexWrap = point.container.style.flexWrap || "wrap";
       point.container.style.gap = point.container.style.gap || "8px";
 
-      buttonWrapper.style.marginLeft = "auto";
-      point.container.appendChild(buttonWrapper);
+      if (point.insertAfter && point.insertAfter.parentNode) {
+        point.insertAfter.insertAdjacentElement("afterend", buttonWrapper);
+      } else {
+        buttonWrapper.style.marginLeft = "auto";
+        point.container.appendChild(buttonWrapper);
+      }
     } finally {
       delete composeRoot.dataset.replymateInjecting;
     }
