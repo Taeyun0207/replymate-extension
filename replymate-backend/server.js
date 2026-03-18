@@ -821,7 +821,7 @@ app.get("/billing/me", requireAuth, async (req, res) => {
 // Create Stripe checkout session for subscription (requires auth)
 app.post("/billing/create-checkout-session", requireAuth, async (req, res) => {
   try {
-    const { targetPlan, billingType } = req.body;
+    const { targetPlan, billingType, subscriptionChange } = req.body;
     const userId = req.userId;
     const userEmail = req.headers["x-user-email"] || null;
 
@@ -838,6 +838,29 @@ app.post("/billing/create-checkout-session", requireAuth, async (req, res) => {
       return res
         .status(500)
         .json({ error: `Stripe price ID not configured for plan: ${targetPlan} (${billing})` });
+    }
+
+    // Switch flow: update existing subscription (monthly ↔ annual) instead of new checkout
+    if (subscriptionChange === true) {
+      const user = await getUser(userId);
+      const stripeCustomerId = user?.stripeCustomerId;
+      if (!stripeCustomerId) {
+        return res.status(400).json({ error: "No subscription found. Use upgrade flow instead." });
+      }
+      const subscriptions = await stripe.subscriptions.list({ customer: stripeCustomerId, status: "active" });
+      const sub = subscriptions.data[0];
+      if (!sub || !sub.items?.data?.[0]) {
+        return res.status(400).json({ error: "No active subscription found." });
+      }
+      const itemId = sub.items.data[0].id;
+      await stripe.subscriptions.update(sub.id, {
+        items: [{ id: itemId, price: priceId }],
+        proration_behavior: "always_invoice",
+      });
+      const successUrl = BILLING_SUCCESS_URL.includes("?")
+        ? BILLING_SUCCESS_URL + "&switch=1"
+        : BILLING_SUCCESS_URL + "?success=1&switch=1";
+      return res.json({ checkoutUrl: successUrl });
     }
 
     const session = await stripe.checkout.sessions.create({
