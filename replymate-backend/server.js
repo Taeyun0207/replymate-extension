@@ -561,8 +561,26 @@ app.get("/usage", requireAuth, async (req, res) => {
   try {
     const userId = req.userId;
     const usage = await checkUsageLimit(userId);
+    let translationUsed = null;
+    let translationLimit = null;
+    let translationRemaining = null;
+    try {
+      const { getTranslationLimit } = require("./src/config/plans");
+      const transCheck = await checkTranslationLimit(userId);
+      const limit = getTranslationLimit(usage?.plan);
+      translationLimit = limit;
+      translationRemaining = transCheck?.remaining ?? null;
+      translationUsed = (limit != null && translationRemaining != null) ? Math.max(0, limit - translationRemaining) : null;
+    } catch (e) {
+      console.warn("[Usage] Translation usage fetch failed:", e?.message);
+    }
     console.log("[Usage] userId:", userId?.slice(0, 8) + "...", "plan:", usage?.plan, "used:", usage?.used);
-    res.json(usage);
+    res.json({
+      ...usage,
+      translationUsed,
+      translationLimit,
+      translationRemaining,
+    });
   } catch (error) {
     console.error("[Usage] Error:", error?.message || error);
     res.status(500).json({ error: "Failed to get usage" });

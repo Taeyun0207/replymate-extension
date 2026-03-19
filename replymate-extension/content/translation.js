@@ -21,6 +21,7 @@
   const STORAGE_ICON_POS = "replymate_translation_icon_pos";
   const STORAGE_PANEL_POS = "replymate_translation_panel_pos";
   const STORAGE_TARGET_LANG = "replymate_translation_target_lang";
+  const STORAGE_TRANSLATION_ENABLED = "replymate_translation_enabled";
 
   let translateAbortController = null;
   let lastTranslatedSource = "";
@@ -336,6 +337,37 @@
   }
 
   /**
+   * Get translation enabled state (default true).
+   */
+  function getTranslationEnabled() {
+    return new Promise((resolve) => {
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.get([STORAGE_TRANSLATION_ENABLED], (r) => {
+            const v = r?.[STORAGE_TRANSLATION_ENABLED];
+            resolve(v === false ? false : true);
+          });
+        } else {
+          resolve(true);
+        }
+      } catch {
+        resolve(true);
+      }
+    });
+  }
+
+  /**
+   * Set translation enabled state.
+   */
+  function setTranslationEnabled(enabled) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ [STORAGE_TRANSLATION_ENABLED]: enabled });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  /**
    * Load position from chrome.storage.local.
    */
   function loadPosition(key, defaultX, defaultY) {
@@ -498,9 +530,11 @@
         <div style="display:flex;align-items:center;gap:8px;">
           ${logoUrl ? `<img src="${logoUrl}" alt="ReplyMate" style="width:18px;height:18px;border-radius:4px;flex-shrink:0;" />` : ""}
           <span id="replymate-translate-title" style="font-weight:600;font-size:13px;letter-spacing:0.02em;">ReplyMate Translate</span>
+          <button id="replymate-translate-toggle" type="button" style="margin-left:4px;padding:2px 8px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid rgba(255,255,255,0.5);background:rgba(255,255,255,0.2);color:#fff;cursor:pointer;">ON</button>
         </div>
         <button id="replymate-translate-close" style="background:rgba(255,255,255,0.25);border:none;cursor:pointer;font-size:16px;color:#fff;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>
       </div>
+      <div id="replymate-translate-usage" style="padding:8px 12px;background:#f1f3f4;font-size:12px;color:#5f6368;display:flex;align-items:center;gap:6px;"></div>
       <div style="padding:12px;background:#fafafa;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div id="replymate-translate-gmail-buttons" style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;">
@@ -532,6 +566,95 @@
   }
 
   /**
+   * Fetch usage from backend (plan, translation usage).
+   */
+  async function fetchUsage() {
+    try {
+      const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
+      if (!token) return null;
+      const res = await fetch(`${BACKEND_BASE}/usage`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Update usage bar (plan + translation usage).
+   */
+  async function updateUsageDisplay(panel) {
+    const usageEl = panel && panel.querySelector("#replymate-translate-usage");
+    if (!usageEl) return;
+    const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
+    const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+    const planNames = (typeof getTranslation === "function" ? getTranslation("planNames", lang) : null) || { free: "Standard", pro: "Pro", pro_plus: "Pro+" };
+    if (typeof planNames === "object") {
+      const usage = await fetchUsage();
+      if (!usage) {
+        usageEl.textContent = t("signInToSeeUsage");
+        return;
+      }
+      const planName = planNames[usage.plan] || planNames.free || "Standard";
+      const used = usage.translationUsed;
+      const limit = usage.translationLimit;
+      if (limit == null) {
+        usageEl.textContent = `${planName} · ${t("unlimitedTranslations")}`;
+      } else if (typeof used === "number" && typeof limit === "number") {
+        usageEl.textContent = `${planName} · ${used} / ${limit} ${t("translationsToday")}`;
+      } else {
+        usageEl.textContent = planName;
+      }
+    } else {
+      usageEl.textContent = "";
+    }
+  }
+
+  /**
+   * Apply enabled state: when OFF, disable translate buttons and show message.
+   */
+  async function applyEnabledState(panel) {
+    const enabled = await getTranslationEnabled();
+    const toggleBtn = panel && panel.querySelector("#replymate-translate-toggle");
+    const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
+    const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+    if (toggleBtn) {
+      toggleBtn.textContent = enabled ? "ON" : "OFF";
+      toggleBtn.style.background = enabled ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.15)";
+      toggleBtn.style.borderColor = enabled ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)";
+    }
+    const ids = ["replymate-translate-latest", "replymate-translate-reply", "replymate-translate-manual"];
+    ids.forEach((id) => {
+      const btn = panel && panel.querySelector(`#${id}`);
+      if (btn) {
+        btn.disabled = !enabled;
+        btn.style.opacity = enabled ? "1" : "0.5";
+        btn.style.cursor = enabled ? "pointer" : "not-allowed";
+      }
+    });
+    const bodyDiv = panel && panel.querySelector("#replymate-translate-usage")?.nextElementSibling;
+    if (bodyDiv) {
+      if (!enabled) {
+        let msg = panel.querySelector("#replymate-translate-disabled-msg");
+        if (!msg) {
+          msg = document.createElement("div");
+          msg.id = "replymate-translate-disabled-msg";
+          msg.style.cssText = "padding:8px 0;color:#5f6368;font-size:12px;";
+          bodyDiv.insertBefore(msg, bodyDiv.firstChild);
+        }
+        msg.textContent = t("translationDisabled");
+        msg.style.display = "";
+      } else {
+        const msg = panel.querySelector("#replymate-translate-disabled-msg");
+        if (msg) msg.style.display = "none";
+      }
+    }
+  }
+
+  /**
    * Update panel labels with current language.
    */
   async function updatePanelLabels(panel) {
@@ -546,6 +669,9 @@
 
     const toLabel = document.getElementById("replymate-translate-to-label");
     if (toLabel) toLabel.textContent = t("translateToLabel");
+
+    await updateUsageDisplay(panel);
+    await applyEnabledState(panel);
 
     const targetSelect = document.getElementById("replymate-translate-target");
     if (targetSelect) {
@@ -654,6 +780,13 @@
       setResult(panel, "");
       return;
     }
+    const enabled = await getTranslationEnabled();
+    if (!enabled) {
+      const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
+      const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+      setResult(panel, t("translationDisabled"), true);
+      return;
+    }
 
     const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
     const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
@@ -710,7 +843,7 @@
         : t("translateError") + msg;
       setResult(panel, displayMsg, true);
     } finally {
-      setTranslateButtonsDisabled(panel, false);
+      await applyEnabledState(panel);
       translateAbortController = null;
     }
   }
@@ -831,6 +964,16 @@
       panel.style.opacity = "0";
       panel.style.transform = "scale(0.96)";
       setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
+    });
+
+    const toggleBtn = document.getElementById("replymate-translate-toggle");
+    toggleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    toggleBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const enabled = await getTranslationEnabled();
+      setTranslationEnabled(!enabled);
+      await applyEnabledState(panel);
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && panel.style.display === "block") {
