@@ -327,14 +327,22 @@ app.post(
     if (event.type === "customer.subscription.updated") {
       const subscription = event.data.object;
       try {
-        // If subscription ended (canceled/unpaid), downgrade immediately
         const status = subscription.status;
+        const subId = subscription.id;
+        const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
+
+        // If subscription ended (canceled/unpaid), downgrade immediately
         if (status === "canceled" || status === "unpaid") {
-          await downgradeUserBySubscriptionId(subscription.id);
-          console.log("[Stripe] User downgraded (subscription status:", status, "):", subscription.id);
+          const result = await downgradeUserBySubscriptionId(subId);
+          if (result) {
+            console.log("[Stripe] User downgraded (subscription status:", status, ") sub:", subId, "user:", result.user_id);
+          } else {
+            console.warn("[Stripe] subscription.updated: No user found for subscription (status:", status, ") sub:", subId, "customer:", customerId, "- may be old sub after plan switch");
+          }
           return res.status(200).json({ received: true });
         }
 
+        // status === "active" (or past_due etc): sync period, cancel_at_period_end, plan
         const periodEnd = subscription.current_period_end ?? subscription.items?.data?.[0]?.current_period_end;
         const periodStart = subscription.current_period_start ?? subscription.items?.data?.[0]?.current_period_start;
         const cancelAtPeriodEnd = !!subscription.cancel_at_period_end;
@@ -344,13 +352,19 @@ app.post(
         const billingInterval = interval === "year" ? "annual" : interval === "month" ? "monthly" : null;
         const priceId = item?.price?.id ?? item?.plan?.id;
         const plan = priceId ? PRICE_ID_TO_PLAN[priceId] : null;
+
         if (periodEnd && periodStart) {
           const periodStartIso = new Date(periodStart * 1000).toISOString();
           const periodEndIso = new Date(periodEnd * 1000).toISOString();
-          const updated = await syncPeriodBySubscriptionId(subscription.id, periodStartIso, periodEndIso, cancelAtPeriodEnd, periodEndAt, billingInterval, plan);
+          console.log("[Stripe] subscription.updated sync: sub:", subId, "status:", status, "cancelAtPeriodEnd:", cancelAtPeriodEnd, "periodEnd:", periodEndAt, "plan:", plan, "billing:", billingInterval);
+          const updated = await syncPeriodBySubscriptionId(subId, periodStartIso, periodEndIso, cancelAtPeriodEnd, periodEndAt, billingInterval, plan);
           if (updated) {
-            console.log("[Stripe] Period and cancel status synced for subscription:", subscription.id);
+            console.log("[Stripe] DB updated for user:", updated.user_id);
+          } else {
+            console.warn("[Stripe] subscription.updated: No user found for sub:", subId, "customer:", customerId, "- lookup by stripe_subscription_id failed");
           }
+        } else {
+          console.warn("[Stripe] subscription.updated: Missing periodEnd or periodStart, skipping sync. sub:", subId, "periodEnd:", periodEnd, "periodStart:", periodStart);
         }
       } catch (error) {
         console.error("Error processing customer.subscription.updated:", error);
@@ -360,9 +374,15 @@ app.post(
 
     if (event.type === "customer.subscription.deleted") {
       const subscription = event.data.object;
+      const subId = subscription.id;
+      const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id;
       try {
-        await downgradeUserBySubscriptionId(subscription.id);
-        console.log("[Stripe] User downgraded to free (subscription ended):", subscription.id);
+        const result = await downgradeUserBySubscriptionId(subId);
+        if (result) {
+          console.log("[Stripe] User downgraded to free (subscription ended): sub:", subId, "user:", result.user_id);
+        } else {
+          console.warn("[Stripe] subscription.deleted: No user found for sub:", subId, "customer:", customerId, "- may be old sub after plan switch");
+        }
       } catch (error) {
         console.error("Error processing customer.subscription.deleted:", error);
         return res.status(500).json({ error: "Failed to process webhook" });
