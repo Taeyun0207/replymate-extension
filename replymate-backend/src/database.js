@@ -83,8 +83,9 @@ async function getUser(userId) {
     }
     if (nowMs >= nextResetMs) {
       const newCycleStart = new Date(nowMs).toISOString();
-      const nextReset = new Date(nowMs + 30 * 24 * 60 * 60 * 1000).toISOString();
-      console.log("[DB] Monthly reset triggered for user:", userId);
+      const daysUntilNextReset = r.billingInterval === "annual" ? 365 : 30;
+      const nextReset = new Date(nowMs + daysUntilNextReset * 24 * 60 * 60 * 1000).toISOString();
+      console.log("[DB] Usage reset triggered for user:", userId, "interval:", r.billingInterval || "monthly");
 
       const { data: updated, error: updateErr } = await supabase
         .from(TABLE_NAME)
@@ -282,6 +283,11 @@ async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, period
     updates.cancel_at_period_end = !!cancelAtPeriodEnd;
     updates.period_end_at = cancelAtPeriodEnd ? periodEndAt : null;
   }
+  // Reset usage when syncing a new period (renewal, plan switch). Do NOT reset when only setting cancel_at_period_end.
+  if (cancelAtPeriodEnd !== true) {
+    updates.used = 0;
+    updates.translation_used = 0;
+  }
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .update(updates)
@@ -289,7 +295,9 @@ async function syncPeriodBySubscriptionId(subscriptionId, periodStartIso, period
     .select("user_id")
     .maybeSingle();
   if (error) throw error;
-  if (data) console.log("[DB] Period synced from Stripe for user:", data.user_id);
+  if (data) {
+    console.log("[DB] Period synced from Stripe for user:", data.user_id, cancelAtPeriodEnd === true ? "(cancel scheduled, usage preserved)" : "(new period, usage reset)");
+  }
   return data;
 }
 
@@ -301,6 +309,8 @@ async function downgradeUserBySubscriptionId(subscriptionId) {
     .update({
       plan: "free",
       used: 0,
+      translation_used: 0,
+      translation_reset_at: null,
       billing_cycle_start: now,
       next_reset_at: nextReset,
       stripe_subscription_id: null,
@@ -362,7 +372,7 @@ async function recordStripeEventProcessed(eventId) {
 }
 
 /**
- * Check if user can translate (does not consume). Free: 15/day. Pro: 1000/month. Pro+: unlimited.
+ * Check if user can translate (does not consume). Free: 15/day. Pro: 50/day. Pro+: unlimited.
  * Returns { allowed: boolean, remaining?: number }.
  */
 async function checkTranslationLimit(userId) {

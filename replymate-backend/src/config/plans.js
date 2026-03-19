@@ -5,7 +5,7 @@ const PLAN_LIMITS = {
 };
 
 const TRANSLATION_LIMIT_FREE = 15;   // per day
-const TRANSLATION_LIMIT_PRO = 1000;  // per month
+const TRANSLATION_LIMIT_PRO = 50;    // per day
 
 function getPlanLimit(plan) {
   return PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
@@ -19,7 +19,7 @@ function getTranslationLimit(plan) {
 
 function getTranslationResetType(plan) {
   if (plan === "pro_plus") return null;
-  if (plan === "pro") return "monthly";
+  if (plan === "pro") return "daily";
   return "daily";
 }
 
