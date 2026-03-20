@@ -440,6 +440,25 @@ html[data-theme="dark"] option, html[data-theme="basic-dark"] option {
       transform: translateY(-1px);
     }
 
+    /*
+     * Manage Subscription — same gold CTA in every theme (higher specificity than .upgrade-link).
+     * Do not add per-theme overrides for .upgrade-pro-plus.
+     */
+    .upgrade-link.upgrade-pro-plus {
+      background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
+      color: #2c1810;
+      border: 1px solid #ffff99;
+      box-shadow: 0 2px 4px rgba(212, 175, 55, 0.3);
+    }
+
+    .upgrade-link.upgrade-pro-plus:hover {
+      background: linear-gradient(135deg, #ffd700 0%, #b8860b 50%, #8b6914 100%);
+      color: #2c1810;
+      text-decoration: none;
+      box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
+      transform: translateY(-1px);
+    }
+
     html[data-theme="dark"] .sign-in-button, html[data-theme="basic-dark"] .sign-in-button {
       background: #202124;
       border-color: #5F6368;
@@ -450,31 +469,40 @@ html[data-theme="dark"] option, html[data-theme="basic-dark"] option {
       background: #2B2C2F;
     }
 
-    html[data-theme="dark"] .upgrade-pro:hover, html[data-theme="basic-dark"] .upgrade-pro:hover {
+    html[data-theme="dark"] .upgrade-pro:hover {
       background: #D3D3D3;
       border-color: #D3D3D3;
     }
 
-    html[data-theme="dark"] .upgrade-pro-plus, html[data-theme="basic-dark"] .upgrade-pro-plus {
-      background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
-      color: #2C1810;
-    }
-
-    html[data-theme="dark"] .upgrade-pro-plus:hover, html[data-theme="basic-dark"] .upgrade-pro-plus:hover {
-      background: linear-gradient(135deg, #FFD700 0%, #B8860B 50%, #8B6914 100%);
-      text-decoration: none;
-      box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
-      transform: translateY(-1px);
-    }
-
-    html[data-theme="dark"] .upgrade-box, html[data-theme="basic-dark"] .upgrade-box {
+    /* Dark — subscription card uses theme surfaces (no bright lavender); gold button is global above */
+    html[data-theme="dark"] .upgrade-box {
       border-color: var(--accent-border);
-      background: linear-gradient(180deg, #f5f0ff 0%, #efe8ff 55%, #ebe4ff 100%);
+      background: linear-gradient(145deg, var(--accent-soft) 0%, var(--select-bg) 52%, var(--bg) 100%);
       box-shadow: 0 2px 16px var(--accent-shadow);
     }
 
+    html[data-theme="dark"] .upgrade-box .plan-usage,
+    html[data-theme="dark"] .upgrade-box .plan-expiry,
+    html[data-theme="dark"] .upgrade-box .upgrade-title:not(.enjoy-box) {
+      color: var(--text);
+    }
+
+    html[data-theme="dark"] .renewal-date {
+      color: var(--muted);
+    }
+
+    html[data-theme="dark"] .upgrade-title.enjoy-box {
+      background: var(--select-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    /* Basic dark — subscription block (neutral surfaces; same gold Manage Subscription as all themes) */
     html[data-theme="basic-dark"] .upgrade-box {
-      background: linear-gradient(135deg, var(--accent-soft) 0%, var(--select-bg) 48%, var(--bg) 100%);
+      border-color: var(--accent-border);
+      background: linear-gradient(145deg, var(--accent-soft) 0%, var(--select-bg) 50%, var(--bg) 100%);
+      box-shadow: 0 2px 14px var(--accent-shadow);
     }
 
     html[data-theme="basic-dark"] .upgrade-box .plan-usage,
@@ -483,17 +511,15 @@ html[data-theme="dark"] option, html[data-theme="basic-dark"] option {
       color: var(--text);
     }
 
-    html[data-theme="dark"] .upgrade-box .plan-usage,
-    html[data-theme="dark"] .upgrade-box .plan-expiry,
-    html[data-theme="basic-dark"] .upgrade-box .plan-usage,
-    html[data-theme="basic-dark"] .upgrade-box .plan-expiry,
-    html[data-theme="dark"] .upgrade-box .upgrade-title:not(.enjoy-box), html[data-theme="basic-dark"] .upgrade-box .upgrade-title:not(.enjoy-box) {
-      color: #000000;
+    html[data-theme="basic-dark"] .renewal-date {
+      color: var(--muted);
     }
 
-    html[data-theme="dark"] .upgrade-title.enjoy-box, html[data-theme="basic-dark"] .upgrade-title.enjoy-box {
-      background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
-      color: #2C1810;
+    html[data-theme="basic-dark"] .upgrade-title.enjoy-box {
+      background: var(--select-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      box-shadow: none;
     }
 
     .header {
