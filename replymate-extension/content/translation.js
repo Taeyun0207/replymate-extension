@@ -396,13 +396,50 @@
     return Math.max(min, Math.min(max, val));
   }
 
+  /** While dragging, lock page text selection + cursor so dense UIs (video lectures, many buttons) don’t feel “sticky”. */
+  let dragSurfaceLockCount = 0;
+  let dragSurfacePrevUserSelect = "";
+  let dragSurfacePrevWebkitUserSelect = "";
+  let dragSurfacePrevCursorHtml = "";
+  let dragSurfacePrevCursorBody = "";
+
+  function lockDragSurface() {
+    dragSurfaceLockCount += 1;
+    if (dragSurfaceLockCount !== 1) return;
+    const b = document.body;
+    const h = document.documentElement;
+    dragSurfacePrevUserSelect = b.style.userSelect || "";
+    dragSurfacePrevWebkitUserSelect = b.style.webkitUserSelect || "";
+    dragSurfacePrevCursorBody = b.style.cursor || "";
+    dragSurfacePrevCursorHtml = h.style.cursor || "";
+    b.style.userSelect = "none";
+    b.style.webkitUserSelect = "none";
+    b.style.cursor = "grabbing";
+    h.style.cursor = "grabbing";
+  }
+
+  function unlockDragSurface() {
+    if (dragSurfaceLockCount < 1) return;
+    dragSurfaceLockCount -= 1;
+    if (dragSurfaceLockCount !== 0) return;
+    const b = document.body;
+    const h = document.documentElement;
+    b.style.userSelect = dragSurfacePrevUserSelect;
+    b.style.webkitUserSelect = dragSurfacePrevWebkitUserSelect;
+    b.style.cursor = dragSurfacePrevCursorBody;
+    h.style.cursor = dragSurfacePrevCursorHtml;
+  }
+
   /**
    * Make an element draggable, constrained to viewport.
-   * Adds mousemove/mouseup on mousedown and removes them on mouseup so dragging works after first move.
+   * Uses Pointer Events + setPointerCapture so dragging stays smooth when the cursor moves over
+   * iframes (Gmail/Outlook) or other elements that would otherwise steal mouse events.
    */
   function makeDraggable(el, onMove) {
-    el.addEventListener("mousedown", (e) => {
+    el.style.touchAction = "none";
+    el.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
+      e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
       const startY = e.clientY;
@@ -412,8 +449,15 @@
       const elW = rect.width;
       const elH = rect.height;
       el.style.cursor = "grabbing";
+      el.setAttribute("data-replymate-dragging", "1");
+      const capId = e.pointerId;
+      try {
+        el.setPointerCapture(capId);
+      } catch (_) { /* ignore */ }
+      lockDragSurface();
 
-      const onMouseMove = (ev) => {
+      const onPointerMove = (ev) => {
+        ev.preventDefault();
         const dx = ev.clientX - startX;
         const dy = ev.clientY - startY;
         const newLeft = clamp(startLeft + dx, 0, window.innerWidth - elW);
@@ -426,25 +470,45 @@
         if (onMove) onMove(newLeft, newTop);
       };
 
-      const onMouseUp = () => {
+      let ended = false;
+      const endDrag = () => {
+        if (ended) return;
+        ended = true;
         el.style.cursor = "grab";
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
+        el.removeAttribute("data-replymate-dragging");
+        unlockDragSurface();
+        try {
+          el.releasePointerCapture(capId);
+        } catch (_) { /* ignore */ }
+        el.removeEventListener("pointermove", onPointerMove);
+        el.removeEventListener("pointerup", endDrag);
+        el.removeEventListener("pointercancel", endDrag);
+        window.removeEventListener("blur", endDrag);
       };
 
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      el.addEventListener("pointermove", onPointerMove, { passive: false });
+      el.addEventListener("pointerup", endDrag);
+      el.addEventListener("pointercancel", endDrag);
+      window.addEventListener("blur", endDrag);
     });
   }
 
   /**
    * Make a panel draggable by its header (drag handle moves the panel), constrained to viewport.
-   * Uses same logic as icon drag for natural movement.
+   * Pointer capture keeps drag reliable over iframes and complex page layers.
    */
   function makePanelDraggable(handle, panel, onMove) {
-    handle.addEventListener("mousedown", (e) => {
+    handle.style.touchAction = "none";
+    handle.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
+      if (
+        e.target.closest
+        && e.target.closest('button, [role="button"], input, select, textarea, label, video, audio')
+      ) {
+        return;
+      }
       e.preventDefault();
+      e.stopPropagation();
       const startX = e.clientX;
       const startY = e.clientY;
       const rect = panel.getBoundingClientRect();
@@ -452,8 +516,16 @@
       const initialTop = rect.top;
       const panelW = rect.width;
       const panelH = rect.height;
+      handle.style.cursor = "grabbing";
+      handle.setAttribute("data-replymate-dragging", "1");
+      const capId = e.pointerId;
+      try {
+        handle.setPointerCapture(capId);
+      } catch (_) { /* ignore */ }
+      lockDragSurface();
 
-      const onMouseMove = (ev) => {
+      const onPointerMove = (ev) => {
+        ev.preventDefault();
         const dx = ev.clientX - startX;
         const dy = ev.clientY - startY;
         const newLeft = clamp(initialLeft + dx, 0, window.innerWidth - panelW);
@@ -463,14 +535,27 @@
         panel.style.transform = "none";
         if (onMove) onMove(newLeft, newTop);
       };
-      const onMouseUp = () => {
+
+      let ended = false;
+      const endDrag = () => {
+        if (ended) return;
+        ended = true;
         handle.style.cursor = "grab";
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
+        handle.removeAttribute("data-replymate-dragging");
+        unlockDragSurface();
+        try {
+          handle.releasePointerCapture(capId);
+        } catch (_) { /* ignore */ }
+        handle.removeEventListener("pointermove", onPointerMove);
+        handle.removeEventListener("pointerup", endDrag);
+        handle.removeEventListener("pointercancel", endDrag);
+        window.removeEventListener("blur", endDrag);
       };
-      handle.style.cursor = "grabbing";
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+
+      handle.addEventListener("pointermove", onPointerMove, { passive: false });
+      handle.addEventListener("pointerup", endDrag);
+      handle.addEventListener("pointercancel", endDrag);
+      window.addEventListener("blur", endDrag);
     });
   }
 
@@ -871,16 +956,18 @@
     icon.style.bottom = "auto";
 
     icon.addEventListener("mouseenter", () => {
+      if (icon.getAttribute("data-replymate-dragging") === "1") return;
       icon.style.boxShadow = "0 6px 20px rgba(121,67,241,0.5)";
       icon.style.transform = "scale(1.05)";
     });
     icon.addEventListener("mouseleave", () => {
+      if (icon.getAttribute("data-replymate-dragging") === "1") return;
       icon.style.boxShadow = "0 4px 16px rgba(121,67,241,0.4)";
       icon.style.transform = "scale(1)";
     });
 
     let iconDidDrag = false;
-    icon.addEventListener("mousedown", () => { iconDidDrag = false; });
+    icon.addEventListener("pointerdown", () => { iconDidDrag = false; }, { capture: true });
     makeDraggable(icon, (x, y) => {
       iconDidDrag = true;
       savePosition(STORAGE_ICON_POS, clamp(x, 0, window.innerWidth - 48), clamp(y, 0, window.innerHeight - 48));
