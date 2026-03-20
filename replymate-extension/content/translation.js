@@ -31,7 +31,9 @@
   const STORAGE_TRANSLATION_ENABLED = "replymate_translation_enabled";
   /** Translate panel appearance only — same theme IDs / order as popup color wheel, separate storage. */
   const STORAGE_TRANSLATION_PANEL_THEME = "replymate_translation_panel_theme";
-  const POPUP_THEME_KEY_SYNC = "replymate_popup_theme";
+  /** Same cache key/TTL as popup.js — fast plan checks for theme without blocking. */
+  const USAGE_CACHE_KEY = "replymate_usage_cache";
+  const USAGE_CACHE_TTL = 30000;
   const TRANSLATION_PANEL_THEME_IDS = ["basic", "light", "sepia", "rose", "slate", "dark", "basic-dark"];
   const DEFAULT_TRANSLATION_PANEL_THEME = "basic";
 
@@ -433,17 +435,46 @@
     } catch (e) { /* ignore */ }
   }
 
+  /** When `display: none`, layout size is 0×0 — never treat that as real dimensions. */
+  function isTranslationPanelExpanded(panel) {
+    return !!(panel && panel.style.display === "flex");
+  }
+
+  /** Save size from layout while the panel is visible (offsetWidth/height are correct). */
+  function persistPanelSizeFromLayout(panel) {
+    if (!isTranslationPanelExpanded(panel)) return;
+    const w = panel.offsetWidth;
+    const h = panel.offsetHeight;
+    if (w >= PANEL_MIN_WIDTH && h >= PANEL_MIN_HEIGHT) {
+      savePanelSize(w, h);
+    }
+  }
+
+  /**
+   * After close, inline width/height still hold the last size (offsetWidth is 0). Use before tab unload.
+   */
+  function persistPanelSizeFromInlineStyle(panel) {
+    if (!panel) return;
+    const sw = parseFloat(panel.style.width);
+    const sh = parseFloat(panel.style.height);
+    if (Number.isFinite(sw) && Number.isFinite(sh) && sw >= PANEL_MIN_WIDTH && sh >= PANEL_MIN_HEIGHT) {
+      savePanelSize(sw, sh);
+    }
+  }
+
   function loadPanelSize(defaultW, defaultH) {
     return new Promise((resolve) => {
       try {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
           chrome.storage.local.get([STORAGE_PANEL_SIZE], (r) => {
             const v = r?.[STORAGE_PANEL_SIZE];
-            resolve(
-              v && typeof v.w === "number" && typeof v.h === "number"
-                ? { w: v.w, h: v.h }
-                : { w: defaultW, h: defaultH }
-            );
+            const ok =
+              v &&
+              typeof v.w === "number" &&
+              typeof v.h === "number" &&
+              Number.isFinite(v.w) &&
+              Number.isFinite(v.h);
+            resolve(ok ? { w: v.w, h: v.h } : { w: defaultW, h: defaultH });
           });
         } else {
           resolve({ w: defaultW, h: defaultH });
@@ -481,7 +512,7 @@
     }
   }
 
-  /** Pro/Pro+ only for non-basic themes; keep in sync with popup.js */
+  /** Pro/Pro+ only for non-basic themes (same rules as popup settings). */
   function planAllowsPremiumColorThemes(plan) {
     return plan === "pro" || plan === "pro_plus";
   }
@@ -492,10 +523,43 @@
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
         chrome.storage.local.set({
           [STORAGE_TRANSLATION_PANEL_THEME]: t,
-          [POPUP_THEME_KEY_SYNC]: t,
         });
       }
     } catch (e) { /* ignore */ }
+  }
+
+  function getCachedUsageFromStorage() {
+    return new Promise((resolve) => {
+      try {
+        if (typeof chrome === "undefined" || !chrome.storage?.local) {
+          resolve(null);
+          return;
+        }
+        chrome.storage.local.get([USAGE_CACHE_KEY], (result) => {
+          if (chrome?.runtime?.lastError) {
+            resolve(null);
+            return;
+          }
+          const entry = result && result[USAGE_CACHE_KEY];
+          if (entry && entry.data && entry.timestamp != null) {
+            if (Date.now() - entry.timestamp < USAGE_CACHE_TTL) {
+              resolve(entry.data);
+              return;
+            }
+          }
+          resolve(null);
+        });
+      } catch {
+        resolve(null);
+      }
+    });
+  }
+
+  /** Prefer 30s usage cache (instant); fall back to network when needed. */
+  async function getUsageForThemeGate() {
+    const cached = await getCachedUsageFromStorage();
+    if (cached) return cached;
+    return fetchUsage();
   }
 
   function loadTranslationPanelTheme() {
@@ -590,9 +654,13 @@
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
           chrome.storage.local.get([key], (r) => {
             const v = r?.[key];
-            resolve(v && typeof v.x === "number" && typeof v.y === "number"
-              ? { x: v.x, y: v.y }
-              : { x: defaultX, y: defaultY });
+            const ok =
+              v &&
+              typeof v.x === "number" &&
+              typeof v.y === "number" &&
+              Number.isFinite(v.x) &&
+              Number.isFinite(v.y);
+            resolve(ok ? { x: v.x, y: v.y } : { x: defaultX, y: defaultY });
           });
         } else {
           resolve({ x: defaultX, y: defaultY });
@@ -648,8 +716,10 @@
    * Make an element draggable, constrained to viewport.
    * Uses Pointer Events + setPointerCapture so dragging stays smooth when the cursor moves over
    * iframes (Gmail/Outlook) or other elements that would otherwise steal mouse events.
+   * @param {(x: number, y: number) => void} [onMove] - optional, e.g. track drag state
+   * @param {(x: number, y: number) => void} [onEnd] - persist final position (recommended)
    */
-  function makeDraggable(el, onMove) {
+  function makeDraggable(el, onMove, onEnd) {
     el.style.touchAction = "none";
     el.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
@@ -698,6 +768,10 @@
         el.removeEventListener("pointerup", endDrag);
         el.removeEventListener("pointercancel", endDrag);
         window.removeEventListener("blur", endDrag);
+        if (onEnd) {
+          const r = el.getBoundingClientRect();
+          onEnd(r.left, r.top);
+        }
       };
 
       el.addEventListener("pointermove", onPointerMove, { passive: false });
@@ -710,8 +784,10 @@
   /**
    * Make a panel draggable by its header (drag handle moves the panel), constrained to viewport.
    * Pointer capture keeps drag reliable over iframes and complex page layers.
+   * @param {(x: number, y: number) => void} [onMove]
+   * @param {(x: number, y: number) => void} [onEnd] - persist final position (recommended)
    */
-  function makePanelDraggable(handle, panel, onMove) {
+  function makePanelDraggable(handle, panel, onMove, onEnd) {
     handle.style.touchAction = "none";
     handle.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
@@ -766,6 +842,10 @@
         handle.removeEventListener("pointerup", endDrag);
         handle.removeEventListener("pointercancel", endDrag);
         window.removeEventListener("blur", endDrag);
+        if (onEnd) {
+          const r = panel.getBoundingClientRect();
+          onEnd(r.left, r.top);
+        }
       };
 
       handle.addEventListener("pointermove", onPointerMove, { passive: false });
@@ -1478,7 +1558,15 @@
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return null;
-      return await res.json();
+      const data = await res.json();
+      try {
+        if (typeof chrome !== "undefined" && chrome.storage?.local) {
+          chrome.storage.local.set({
+            [USAGE_CACHE_KEY]: { data, timestamp: Date.now() },
+          });
+        }
+      } catch (e) { /* ignore */ }
+      return data;
     } catch {
       return null;
     }
@@ -1726,6 +1814,30 @@
   }
 
   /**
+   * Hide FAB + panel while any element is fullscreen (YouTube, Netflix, etc.).
+   * Sites that use custom "theater" mode without the Fullscreen API are not covered.
+   */
+  function bindFullscreenHideForTranslationUi() {
+    function sync() {
+      const fs = document.fullscreenElement || document.webkitFullscreenElement;
+      const hide = !!fs;
+      const icon = document.getElementById(TRANSLATION_ICON_ID);
+      const panel = document.getElementById(TRANSLATION_PANEL_ID);
+      if (icon) {
+        icon.style.visibility = hide ? "hidden" : "";
+        icon.style.pointerEvents = hide ? "none" : "";
+      }
+      if (panel) {
+        panel.style.visibility = hide ? "hidden" : "";
+        panel.style.pointerEvents = hide ? "none" : "";
+      }
+    }
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    sync();
+  }
+
+  /**
    * Initialize translation UI: icon + panel + handlers.
    */
   async function init() {
@@ -1733,7 +1845,7 @@
 
     const panel = createPanel();
     const savedTheme = await loadTranslationPanelTheme();
-    const usageForTheme = await fetchUsage();
+    const usageForTheme = await getCachedUsageFromStorage();
     let effectiveTheme = normalizeTranslationPanelTheme(savedTheme);
     if (usageForTheme && !planAllowsPremiumColorThemes(usageForTheme.plan) && effectiveTheme !== DEFAULT_TRANSLATION_PANEL_THEME) {
       effectiveTheme = DEFAULT_TRANSLATION_PANEL_THEME;
@@ -1741,10 +1853,25 @@
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
           chrome.storage.local.set({
             [STORAGE_TRANSLATION_PANEL_THEME]: effectiveTheme,
-            [POPUP_THEME_KEY_SYNC]: effectiveTheme,
           });
         }
       } catch (e) { /* ignore */ }
+    }
+    if (!usageForTheme) {
+      fetchUsage()
+        .then((u) => {
+          if (!u || planAllowsPremiumColorThemes(u.plan)) return;
+          const p = document.getElementById(TRANSLATION_PANEL_ID);
+          const cur = normalizeTranslationPanelTheme(p?.getAttribute("data-theme"));
+          if (cur === DEFAULT_TRANSLATION_PANEL_THEME) return;
+          try {
+            if (typeof chrome !== "undefined" && chrome.storage?.local) {
+              chrome.storage.local.set({ [STORAGE_TRANSLATION_PANEL_THEME]: DEFAULT_TRANSLATION_PANEL_THEME });
+            }
+          } catch (e) { /* ignore */ }
+          if (p) applyTranslationPanelTheme(p, DEFAULT_TRANSLATION_PANEL_THEME);
+        })
+        .catch(() => {});
     }
 
     const icon = document.createElement("div");
@@ -1783,10 +1910,15 @@
 
     let iconDidDrag = false;
     icon.addEventListener("pointerdown", () => { iconDidDrag = false; }, { capture: true });
-    makeDraggable(icon, (x, y) => {
-      iconDidDrag = true;
-      savePosition(STORAGE_ICON_POS, clamp(x, 0, window.innerWidth - 48), clamp(y, 0, window.innerHeight - 48));
-    });
+    makeDraggable(
+      icon,
+      () => {
+        iconDidDrag = true;
+      },
+      (x, y) => {
+        savePosition(STORAGE_ICON_POS, clamp(x, 0, window.innerWidth - 48), clamp(y, 0, window.innerHeight - 48));
+      }
+    );
 
     applyTranslationPanelTheme(panel, effectiveTheme);
 
@@ -1809,7 +1941,7 @@
 
     const header = document.getElementById("replymate-translate-header");
     if (header) {
-      makePanelDraggable(header, panel, (x, y) => {
+      makePanelDraggable(header, panel, null, (x, y) => {
         const r = panel.getBoundingClientRect();
         savePosition(STORAGE_PANEL_POS, clamp(x, 0, window.innerWidth - r.width), clamp(y, 0, window.innerHeight - r.height));
       });
@@ -1827,7 +1959,10 @@
       panelViewportResizeTimer = setTimeout(() => {
         const p = document.getElementById(TRANSLATION_PANEL_ID);
         if (!p) return;
+        /* Closed panel: getBoundingClientRect is 0×0 — would clamp to min size and overwrite storage. */
+        if (!isTranslationPanelExpanded(p)) return;
         const r = p.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8) return;
         const { w, h } = clampPanelSize(r.width, r.height);
         if (Math.abs(w - r.width) > 0.5 || Math.abs(h - r.height) > 0.5) {
           p.style.width = `${w}px`;
@@ -1847,6 +1982,20 @@
       }, 150);
     });
 
+    /** Flush last known size when leaving the page (tab close / navigation). */
+    window.addEventListener("pagehide", () => {
+      try {
+        if (window.innerWidth < 120) return;
+        const p = document.getElementById(TRANSLATION_PANEL_ID);
+        if (!p) return;
+        if (isTranslationPanelExpanded(p)) {
+          persistPanelSizeFromLayout(p);
+        } else {
+          persistPanelSizeFromInlineStyle(p);
+        }
+      } catch (e) { /* ignore */ }
+    });
+
     await updatePanelLabels(panel);
 
     icon.addEventListener("click", async (e) => {
@@ -1855,6 +2004,7 @@
       if (iconDidDrag) return;
       const isVisible = panel.style.display === "flex";
       if (isVisible) {
+        persistPanelSizeFromLayout(panel);
         panel.style.opacity = "0";
         panel.style.transform = "scale(0.96)";
         setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
@@ -1880,7 +2030,7 @@
       themeToggleEl.addEventListener("click", async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        const usage = await fetchUsage();
+        const usage = await getUsageForThemeGate();
         const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
         const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
         if (!usage) {
@@ -1900,6 +2050,7 @@
     }
 
     document.getElementById("replymate-translate-close").addEventListener("click", () => {
+      persistPanelSizeFromLayout(panel);
       panel.style.opacity = "0";
       panel.style.transform = "scale(0.96)";
       setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
@@ -1907,6 +2058,7 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && panel.style.display === "flex") {
+        persistPanelSizeFromLayout(panel);
         panel.style.opacity = "0";
         panel.style.transform = "scale(0.96)";
         setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
@@ -1968,6 +2120,7 @@
     });
 
     document.body.appendChild(icon);
+    bindFullscreenHideForTranslationUi();
     /* Icon wasn't in the document when applyTranslationPanelTheme first ran — sync data-theme now. */
     applyTranslationPanelTheme(panel, normalizeTranslationPanelTheme(panel.getAttribute("data-theme")));
     const enabled = await getTranslationEnabled();
@@ -2034,11 +2187,6 @@
         const v = changes[STORAGE_TRANSLATION_PANEL_THEME]?.newValue;
         if (p && typeof v === "string") applyTranslationPanelTheme(p, v);
       }
-      if (changes[POPUP_THEME_KEY_SYNC]) {
-        const p = document.getElementById(TRANSLATION_PANEL_ID);
-        const v = changes[POPUP_THEME_KEY_SYNC]?.newValue;
-        if (p && typeof v === "string") applyTranslationPanelTheme(p, v);
-      }
       if (changes[STORAGE_TRANSLATION_ENABLED]) {
         const v = changes[STORAGE_TRANSLATION_ENABLED]?.newValue;
         setIconVisibility(v === false ? false : true);
@@ -2046,10 +2194,13 @@
     });
   }
 
-  // Initialize when DOM is ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(init, 1500));
-  } else {
-    setTimeout(init, 1500);
+  // Initialize when DOM is ready (no artificial delay — FAB should appear quickly)
+  function scheduleInit() {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", () => setTimeout(init, 0), { once: true });
+    } else {
+      setTimeout(init, 0);
+    }
   }
+  scheduleInit();
 })();

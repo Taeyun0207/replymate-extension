@@ -4,7 +4,7 @@ const USER_NAME_KEY = "replymateUserName";
 const LANGUAGE_KEY = "replymateLanguage";
 const TRANSLATION_ENABLED_KEY = "replymate_translation_enabled";
 const POPUP_THEME_KEY = "replymate_popup_theme";
-/** Same key as translation.js — Pro/Pro+ only color themes; Free resets both to basic. */
+/** Floating translate panel theme — independent from popup settings (`replymate_popup_theme`). */
 const TRANSLATION_PANEL_THEME_KEY = "replymate_translation_panel_theme";
 /**
  * Popup look is user-controlled only (color wheel). We do not read prefers-color-scheme
@@ -13,6 +13,8 @@ const TRANSLATION_PANEL_THEME_KEY = "replymate_translation_panel_theme";
  */
 const DEFAULT_POPUP_THEME = "basic";
 const POPUP_THEME_IDS = [DEFAULT_POPUP_THEME, "light", "sepia", "rose", "slate", "dark", "basic-dark"];
+/** Synced in applyPopupTheme — lets popup.html head script paint the right theme before async storage. */
+const POPUP_THEME_SESSION_KEY = "replymate_popup_theme_cache";
 const USAGE_CACHE_KEY = "replymate_usage_cache";
 const USAGE_CACHE_TTL = 30000; // 30 seconds
 
@@ -344,16 +346,21 @@ function enforceColorThemesForPlan(plan) {
 
 /** Apply settings popup theme (see POPUP_THEME_IDS). */
 function applyPopupTheme(theme) {
-  document.documentElement.setAttribute("data-theme", normalizePopupTheme(theme));
+  const t = normalizePopupTheme(theme);
+  document.documentElement.setAttribute("data-theme", t);
+  try {
+    sessionStorage.setItem(POPUP_THEME_SESSION_KEY, t);
+  } catch (_) {
+    /* ignore */
+  }
 }
 
-/** Save theme to storage immediately (no Save button). Keeps popup + translation panel in sync. */
+/** Save popup theme only (floating translate uses `TRANSLATION_PANEL_THEME_KEY` separately). */
 function persistPopupTheme(theme) {
   const t = normalizePopupTheme(theme);
   applyPopupTheme(t);
   chrome.storage.local.set({
     [POPUP_THEME_KEY]: t,
-    [TRANSLATION_PANEL_THEME_KEY]: t,
   });
 }
 
@@ -1062,6 +1069,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Load saved values (tone, length, user name, language, translation toggle, theme) when the popup opens.
   chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY, TRANSLATION_ENABLED_KEY, POPUP_THEME_KEY], async (result) => {
+    // Theme first — before await work — removes flash when sessionStorage was empty (cold open).
+    applyPopupTheme(result[POPUP_THEME_KEY] || DEFAULT_POPUP_THEME);
+
     const tone = result[TONE_KEY] || DEFAULT_TONE;
     const length = result[LENGTH_KEY] || DEFAULT_LENGTH;
     const userName = result[USER_NAME_KEY] || "";
@@ -1093,7 +1103,9 @@ document.addEventListener("DOMContentLoaded", () => {
       await enforceColorThemesForPlan("free");
     }
 
+    // Re-apply after plan enforcement (free/downgrade may have reset storage to basic).
     chrome.storage.local.get([POPUP_THEME_KEY], (r) => {
+      if (chrome.runtime?.lastError) return;
       applyPopupTheme(r[POPUP_THEME_KEY] || DEFAULT_POPUP_THEME);
     });
   });
@@ -1107,7 +1119,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Color wheel: Pro / Pro+ only; syncs popup + translation panel storage
+  // Color wheel: Pro / Pro+ only; saves popup theme only (translate panel has its own wheel)
   const themeToggleBtn = document.getElementById("themeToggleBtn");
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener("click", async () => {
@@ -1120,7 +1132,11 @@ document.addEventListener("DOMContentLoaded", () => {
         showThemeProToast(getTranslation("colorThemeUpgradePrompt", language));
         return;
       }
-      const usage = await getUsageData(true);
+      // Cache-first so the UI updates immediately (avoid force-refresh network on every click).
+      let usage = await getUsageData(false);
+      if (!usage) {
+        usage = await getUsageData(true);
+      }
       if (!usage) {
         showThemeProToast(getTranslation("colorThemeUpgradePrompt", language));
         return;

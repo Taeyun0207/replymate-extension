@@ -1,6 +1,18 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="basic">
 <head>
+  <!-- Apply last popup theme synchronously (same browser session) so we don't flash default "basic" before popup.js runs. -->
+  <script>
+    (function () {
+      try {
+        var ALLOWED = ["basic", "light", "sepia", "rose", "slate", "dark", "basic-dark"];
+        var t = sessionStorage.getItem("replymate_popup_theme_cache");
+        if (t && ALLOWED.indexOf(t) !== -1) {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <!-- Appearance: data-theme only. Not tied to OS light/dark (no prefers-color-scheme). Default: basic. -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
