@@ -1,6 +1,7 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="basic">
 <head>
+  <!-- Appearance: data-theme only. Not tied to OS light/dark (no prefers-color-scheme). Default: basic. -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ReplyMate Settings</title>
@@ -8,8 +9,50 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600&display=swap" rel="stylesheet">
   <style>
+    /* Themes = user choice via color wheel. Do not use @media (prefers-color-scheme). */
+    /* Fallback when no data-theme (shouldn't happen in popup) */
     :root {
-      color-scheme: light dark;
+      color-scheme: light;
+      --bg: #f7f7f8;
+      --text: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e0e0e0;
+      --select-bg: #ffffff;
+      --select-text: #1a1a1a;
+      --button-bg: #7943f1;
+      --button-text: #ffffff;
+      --success: #188038;
+      --accent-soft: #f0f0f2;
+      --accent-border: #dcdcdc;
+      --accent-border-strong: #525252;
+      --accent-ring: rgba(0, 0, 0, 0.14);
+      --accent-shadow: rgba(0, 0, 0, 0.07);
+      --accent-glow: rgba(0, 0, 0, 0.04);
+    }
+
+    /* Basic — neutral gray (default). Primary button stays ReplyMate purple. */
+    html[data-theme="basic"] {
+      color-scheme: light;
+      --bg: #f7f7f8;
+      --text: #1a1a1a;
+      --muted: #6b6b6b;
+      --border: #e0e0e0;
+      --select-bg: #ffffff;
+      --select-text: #1a1a1a;
+      --button-bg: #7943f1;
+      --button-text: #ffffff;
+      --success: #188038;
+      --accent-soft: #f0f0f2;
+      --accent-border: #dcdcdc;
+      --accent-border-strong: #525252;
+      --accent-ring: rgba(0, 0, 0, 0.14);
+      --accent-shadow: rgba(0, 0, 0, 0.07);
+      --accent-glow: rgba(0, 0, 0, 0.04);
+    }
+
+    /* Light — soft purple tint (same as previous default “light”) */
+    html[data-theme="light"] {
+      color-scheme: light;
       --bg: #f5f5f5;
       --text: #222222;
       --muted: #5f6368;
@@ -19,20 +62,92 @@
       --button-bg: #7943f1;
       --button-text: #ffffff;
       --success: #188038;
+      --accent-soft: #f0ebff;
+      --accent-border: #d4c9f5;
+      --accent-border-strong: #9370db;
+      --accent-ring: rgba(121, 67, 241, 0.22);
+      --accent-shadow: rgba(121, 67, 241, 0.14);
+      --accent-glow: rgba(121, 67, 241, 0.06);
     }
 
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #202124;
-        --text: #e8eaed;
-        --muted: #9aa0a6;
-        --border: #5f6368;
-        --select-bg: #303134;
-        --select-text: #e8eaed;
-        --button-bg: #7943f1; /* 유지 */
-        --button-text: #ffffff; /* 유지 */
-        --success: #188038; /* 유지 */
-      }
+    /* Themes: cycle via color wheel; saved immediately. Order: basic → light → sepia → rose → dark → basic-dark (last). */
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #202124;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --border: #5f6368;
+      --select-bg: #303134;
+      --select-text: #e8eaed;
+      --button-bg: #7943f1;
+      --button-text: #ffffff;
+      --success: #188038;
+      --accent-soft: #2a2438;
+      --accent-border: #5c4d78;
+      --accent-border-strong: #a78bfa;
+      --accent-ring: rgba(167, 139, 250, 0.38);
+      --accent-shadow: rgba(121, 67, 241, 0.28);
+      --accent-glow: rgba(121, 67, 241, 0.12);
+    }
+
+    /* Basic dark — neutral gray dark (like basic, no purple wash). Save button stays ReplyMate purple. */
+    html[data-theme="basic-dark"] {
+      color-scheme: dark;
+      --bg: #1c1c1e;
+      --text: #e8e8ea;
+      --muted: #a1a1a6;
+      --border: #3a3a3c;
+      --select-bg: #2c2c2e;
+      --select-text: #f2f2f7;
+      --button-bg: #7943f1;
+      --button-text: #ffffff;
+      --success: #30d158;
+      --accent-soft: #252528;
+      --accent-border: #48484a;
+      --accent-border-strong: #8e8e93;
+      --accent-ring: rgba(255, 255, 255, 0.18);
+      --accent-shadow: rgba(0, 0, 0, 0.45);
+      --accent-glow: rgba(0, 0, 0, 0.25);
+    }
+
+    /* Sepia — warm paper (light) */
+    html[data-theme="sepia"] {
+      color-scheme: light;
+      --bg: #efe8dc;
+      --text: #2c2416;
+      --muted: #6b5d4a;
+      --border: #c9b8a0;
+      --select-bg: #faf6f0;
+      --select-text: #2c2416;
+      --button-bg: #7943f1;
+      --button-text: #ffffff;
+      --success: #188038;
+      --accent-soft: #ebe4f0;
+      --accent-border: #c4b5c8;
+      --accent-border-strong: #8b6bb5;
+      --accent-ring: rgba(107, 80, 150, 0.28);
+      --accent-shadow: rgba(121, 67, 241, 0.12);
+      --accent-glow: rgba(107, 80, 150, 0.08);
+    }
+
+    /* Rose — soft pink / lavender (light) */
+    html[data-theme="rose"] {
+      color-scheme: light;
+      --bg: #fdf2f8;
+      --text: #431a3a;
+      --muted: #9d6b8a;
+      --border: #e9c4d8;
+      --select-bg: #ffffff;
+      --select-text: #431a3a;
+      --button-bg: #7943f1;
+      --button-text: #ffffff;
+      --success: #188038;
+      --accent-soft: #faf0fc;
+      --accent-border: #e8d4f0;
+      --accent-border-strong: #c084fc;
+      --accent-ring: rgba(192, 132, 252, 0.35);
+      --accent-shadow: rgba(167, 139, 250, 0.18);
+      --accent-glow: rgba(192, 132, 252, 0.1);
     }
 
     * {
@@ -47,24 +162,19 @@
 
     body {
       margin: 0;
-      min-width: 260px;
+      min-width: 270px;
       padding: 14px;
       font-family: Arial, sans-serif;
-      background: var(--bg);
+      background: linear-gradient(165deg, var(--accent-soft) 0%, var(--bg) 38%, var(--bg) 100%);
       color: var(--text);
     }
 
     .settings-box {
       padding: 14px 16px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--accent-border);
       border-radius: 16px;
       background: var(--select-bg);
-    }
-
-    @media (prefers-color-scheme: dark) {
-      .settings-box {
-        background: var(--select-bg);
-      }
+      box-shadow: 0 2px 14px var(--accent-shadow), 0 0 0 1px var(--accent-glow);
     }
 
     h2 {
@@ -95,6 +205,7 @@
       background: var(--select-bg);
       color: var(--select-text);
       outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
     input[type="text"] {
@@ -106,6 +217,7 @@
       background: var(--select-bg);
       color: var(--select-text);
       outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
 /* FIX: dropdown option text visibility */
@@ -114,15 +226,15 @@ option {
   background: #fff;
 }
 
-@media (prefers-color-scheme: dark) {
-  option {
-    color: #fff;
-    background: #303134;
-  }
+html[data-theme="dark"] option, html[data-theme="basic-dark"] option {
+  color: #fff;
+  background: #303134;
 }
 
-    select:focus {
-      border-color: var(--border);
+    select:focus,
+    input[type="text"]:focus {
+      border-color: var(--accent-border-strong);
+      box-shadow: 0 0 0 2px var(--accent-ring);
     }
 
     button {
@@ -141,6 +253,17 @@ option {
     button:hover {
       background: #b794f6;
       color: #222222;
+    }
+
+    #saveButton {
+      background: linear-gradient(180deg, #906af5 0%, var(--button-bg) 48%, #6328d8 100%);
+      color: #ffffff;
+    }
+
+    #saveButton:hover {
+      background: linear-gradient(180deg, #9b7ef0 0%, #7943f1 52%, #5b21b6 100%);
+      color: #ffffff;
+      box-shadow: 0 2px 12px var(--accent-shadow);
     }
 
     button:disabled {
@@ -171,10 +294,11 @@ option {
     .upgrade-box {
       margin: 8px 0 0 0;
       padding: 12px;
-      border: 1px solid #e8eaed;
+      border: 1px solid var(--accent-border);
       border-radius: 16px;
-      background: #EFE8FF;
+      background: linear-gradient(135deg, var(--accent-soft) 0%, var(--select-bg) 48%, var(--bg) 100%);
       text-align: center;
+      box-shadow: 0 2px 12px var(--accent-shadow);
     }
 
     .upgrade-box .plan-usage {
@@ -256,11 +380,9 @@ option {
       background: rgba(0, 0, 0, 0.05);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .topup-pill:hover {
-        background: rgba(255, 255, 255, 0.08);
-        color: var(--text);
-      }
+    html[data-theme="dark"] .topup-pill:hover, html[data-theme="basic-dark"] .topup-pill:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
     }
 
     .upgrade-link {
@@ -318,57 +440,119 @@ option {
       transform: translateY(-1px);
     }
 
-    @media (prefers-color-scheme: dark) {
-      /* Google sign-in box - dark mode */
-      .sign-in-button {
-        background: #202124;
-        border-color: #5F6368;
-        color: #E8EAED;
-      }
+    html[data-theme="dark"] .sign-in-button, html[data-theme="basic-dark"] .sign-in-button {
+      background: #202124;
+      border-color: #5F6368;
+      color: #E8EAED;
+    }
 
-      .sign-in-button:hover {
-        background: #2B2C2F;
-      }
+    html[data-theme="dark"] .sign-in-button:hover, html[data-theme="basic-dark"] .sign-in-button:hover {
+      background: #2B2C2F;
+    }
 
-      .upgrade-pro:hover {
-        background: #D3D3D3;
-        border-color: #D3D3D3;
-      }
+    html[data-theme="dark"] .upgrade-pro:hover, html[data-theme="basic-dark"] .upgrade-pro:hover {
+      background: #D3D3D3;
+      border-color: #D3D3D3;
+    }
 
-      .upgrade-pro-plus {
-        background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
-        color: #2C1810;
-      }
+    html[data-theme="dark"] .upgrade-pro-plus, html[data-theme="basic-dark"] .upgrade-pro-plus {
+      background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
+      color: #2C1810;
+    }
 
-      .upgrade-pro-plus:hover {
-        background: linear-gradient(135deg, #FFD700 0%, #B8860B 50%, #8B6914 100%);
-        text-decoration: none;
-        box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
-        transform: translateY(-1px);
-      }
-      
-      .upgrade-box {
-        border-color: #e8eaed;
-        background: #EFE8FF;
-      }
+    html[data-theme="dark"] .upgrade-pro-plus:hover, html[data-theme="basic-dark"] .upgrade-pro-plus:hover {
+      background: linear-gradient(135deg, #FFD700 0%, #B8860B 50%, #8B6914 100%);
+      text-decoration: none;
+      box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
+      transform: translateY(-1px);
+    }
 
-      .upgrade-box .plan-usage,
-      .upgrade-box .plan-expiry,
-      .upgrade-box .upgrade-title:not(.enjoy-box) {
-        color: #000000;
-      }
+    html[data-theme="dark"] .upgrade-box, html[data-theme="basic-dark"] .upgrade-box {
+      border-color: var(--accent-border);
+      background: linear-gradient(180deg, #f5f0ff 0%, #efe8ff 55%, #ebe4ff 100%);
+      box-shadow: 0 2px 16px var(--accent-shadow);
+    }
 
-      .upgrade-title.enjoy-box {
-        background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
-        color: #2C1810;
-      }
+    html[data-theme="basic-dark"] .upgrade-box {
+      background: linear-gradient(135deg, var(--accent-soft) 0%, var(--select-bg) 48%, var(--bg) 100%);
+    }
+
+    html[data-theme="basic-dark"] .upgrade-box .plan-usage,
+    html[data-theme="basic-dark"] .upgrade-box .plan-expiry,
+    html[data-theme="basic-dark"] .upgrade-box .upgrade-title:not(.enjoy-box) {
+      color: var(--text);
+    }
+
+    html[data-theme="dark"] .upgrade-box .plan-usage,
+    html[data-theme="dark"] .upgrade-box .plan-expiry,
+    html[data-theme="basic-dark"] .upgrade-box .plan-usage,
+    html[data-theme="basic-dark"] .upgrade-box .plan-expiry,
+    html[data-theme="dark"] .upgrade-box .upgrade-title:not(.enjoy-box), html[data-theme="basic-dark"] .upgrade-box .upgrade-title:not(.enjoy-box) {
+      color: #000000;
+    }
+
+    html[data-theme="dark"] .upgrade-title.enjoy-box, html[data-theme="basic-dark"] .upgrade-title.enjoy-box {
+      background: linear-gradient(135deg, #FFD700 0%, #FFD700 50%, #FFFF99 100%);
+      color: #2C1810;
     }
 
     .header {
       display: flex;
       align-items: center;
+      justify-content: flex-start;
       gap: 8px;
-      margin-bottom: 14px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--accent-border);
+    }
+
+    .header-leading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+      flex-wrap: nowrap;
+    }
+
+    /* Override global `button { width: 100%; padding: ...; background: purple }` — icon-sized hit target only */
+    .header-theme-toggle {
+      flex: 0 0 auto;
+      flex-shrink: 0;
+      box-sizing: border-box;
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      margin: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 6px;
+      line-height: 0;
+      font-size: 0;
+    }
+
+    .header-theme-toggle:hover {
+      opacity: 0.88;
+      background: transparent;
+      color: inherit;
+    }
+
+    .header-theme-toggle:focus-visible {
+      outline: 2px solid var(--button-bg);
+      outline-offset: 2px;
+    }
+
+    .header-theme-toggle img {
+      display: block;
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
     }
 
     .header-icon {
@@ -377,12 +561,12 @@ option {
       flex-shrink: 0;
       border: 1px solid #9ca3af;
       border-radius: 50%;
+      object-fit: cover;
+      /* icon128 source @ 24px display = sharp on 2x/3x screens */
     }
 
-    @media (prefers-color-scheme: dark) {
-      .header-icon {
-        border: none;
-      }
+    html[data-theme="dark"] .header-icon, html[data-theme="basic-dark"] .header-icon {
+      border: none;
     }
 
     .header-title {
@@ -390,12 +574,57 @@ option {
       line-height: 1.2;
       color: var(--text);
       margin: 0;
+      flex: 0 1 auto;
     }
 
+    /*
+     * Gradient text: never use `background:` shorthand here — it resets background-clip
+     * to border-box and draws a rectangle behind the text. Use background-image only.
+     */
     .header-brand {
+      display: inline-block;
       font-family: "Poppins", -apple-system, BlinkMacSystemFont, sans-serif;
       font-weight: 600;
       letter-spacing: -0.02em;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+      background-repeat: no-repeat;
+      background-size: 100% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+
+    /* “ReplyMate” wordmark — basic: plain text (no gradient); other themes: gradient */
+    html[data-theme="basic"] .header-brand {
+      background-image: none;
+      background-clip: border-box;
+      -webkit-background-clip: border-box;
+      -webkit-text-fill-color: var(--text);
+      color: var(--text);
+    }
+
+    html[data-theme="light"] .header-brand {
+      background-image: linear-gradient(135deg, var(--button-bg) 0%, #5b21b6 52%, #7c3aed 100%);
+    }
+
+    html[data-theme="sepia"] .header-brand {
+      background-image: linear-gradient(135deg, #5c4033 0%, #8b6914 38%, #6b4f3a 100%);
+    }
+
+    html[data-theme="rose"] .header-brand {
+      background-image: linear-gradient(135deg, #a21caf 0%, #ec4899 45%, #7c3aed 100%);
+    }
+
+    html[data-theme="dark"] .header-brand {
+      background-image: linear-gradient(135deg, #c4b5fd 0%, #e9d5ff 45%, #a78bfa 100%);
+    }
+
+    html[data-theme="basic-dark"] .header-brand {
+      background-image: none;
+      background-clip: border-box;
+      -webkit-background-clip: border-box;
+      -webkit-text-fill-color: var(--text);
+      color: var(--text);
     }
 
     .footer {
@@ -459,11 +688,9 @@ option {
       color: var(--text);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .support-dropdown-item:hover {
-        background: rgba(255,255,255,0.08);
-        color: var(--text);
-      }
+    html[data-theme="dark"] .support-dropdown-item:hover, html[data-theme="basic-dark"] .support-dropdown-item:hover {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
     }
 
     .support-dropdown-item svg {
@@ -537,10 +764,8 @@ option {
       background: rgba(0,0,0,0.05);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .modal-close:hover {
-        background: rgba(255,255,255,0.08);
-      }
+    html[data-theme="dark"] .modal-close:hover, html[data-theme="basic-dark"] .modal-close:hover {
+      background: rgba(255,255,255,0.08);
     }
 
     .modal textarea {
@@ -560,7 +785,8 @@ option {
 
     .modal textarea:focus {
       outline: none;
-      border-color: var(--button-bg);
+      border-color: var(--accent-border-strong);
+      box-shadow: 0 0 0 2px var(--accent-ring);
     }
 
     .modal-actions {
@@ -586,11 +812,9 @@ option {
       color: var(--text);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .modal-submit:hover {
-        background: rgba(255,255,255,0.08);
-        color: var(--text);
-      }
+    html[data-theme="dark"] .modal-submit:hover, html[data-theme="basic-dark"] .modal-submit:hover {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
     }
 
     .modal-enquiry-content {
@@ -624,11 +848,9 @@ option {
       color: var(--text);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .modal-copy-btn:hover {
-        background: rgba(255,255,255,0.08);
-        color: var(--text);
-      }
+    html[data-theme="dark"] .modal-copy-btn:hover, html[data-theme="basic-dark"] .modal-copy-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
     }
 
     .cancel-section {
@@ -654,8 +876,8 @@ option {
 
     .login-section {
       margin-bottom: 14px;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--border);
+      padding: 5px 0 10px 0;
+      border-bottom: 1px solid var(--accent-border);
     }
 
     /* Google Sign-In button - light mode */
@@ -712,19 +934,17 @@ option {
       white-space: nowrap;
     }
 
-    @media (prefers-color-scheme: dark) {
-      .gsi-material-button {
-        background: #1F1F1F;
-        border-color: #8E8E93;
-        color: #E8EAED;
-      }
+    html[data-theme="dark"] .gsi-material-button, html[data-theme="basic-dark"] .gsi-material-button {
+      background: #1F1F1F;
+      border-color: #8E8E93;
+      color: #E8EAED;
+    }
 
-      .gsi-material-button:hover {
-        background: #3D3D3D;
-        border-color: #A0A0A5;
-        color: #FFFFFF;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-      }
+    html[data-theme="dark"] .gsi-material-button:hover, html[data-theme="basic-dark"] .gsi-material-button:hover {
+      background: #3D3D3D;
+      border-color: #A0A0A5;
+      color: #FFFFFF;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     }
 
     .signed-in-email {
@@ -748,27 +968,28 @@ option {
       color: var(--text);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .sign-out-button:hover {
-        background: rgba(255,255,255,0.08);
-      }
+    html[data-theme="dark"] .sign-out-button:hover, html[data-theme="basic-dark"] .sign-out-button:hover {
+      background: rgba(255,255,255,0.08);
     }
 
     select:hover {
       background: rgba(0,0,0,0.05);
     }
 
-    @media (prefers-color-scheme: dark) {
-      select:hover {
-        background: rgba(255,255,255,0.08);
-      }
+    html[data-theme="dark"] select:hover, html[data-theme="basic-dark"] select:hover {
+      background: rgba(255,255,255,0.08);
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <img class="header-icon" src="../icons/icon24.png" alt="ReplyMate Icon">
-    <h2 class="header-title"><span class="header-brand">ReplyMate</span> <span class="header-settings">Settings</span></h2>
+    <div class="header-leading">
+      <img class="header-icon" src="../icons/icon128.png" width="24" height="24" alt="ReplyMate Icon" decoding="async">
+      <h2 class="header-title"><span class="header-brand">ReplyMate</span> <span class="header-settings">Settings</span></h2>
+      <button type="button" id="themeToggleBtn" class="header-theme-toggle" aria-label="Cycle color theme" title="Cycle theme (saved automatically)">
+        <img src="../icons/colorWheel.png" alt="" width="24" height="24" />
+      </button>
+    </div>
   </div>
 
   <div id="loginSection" class="login-section">

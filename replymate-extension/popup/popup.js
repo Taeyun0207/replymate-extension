@@ -3,6 +3,14 @@ const LENGTH_KEY = "replymateLength";
 const USER_NAME_KEY = "replymateUserName";
 const LANGUAGE_KEY = "replymateLanguage";
 const TRANSLATION_ENABLED_KEY = "replymate_translation_enabled";
+const POPUP_THEME_KEY = "replymate_popup_theme";
+/**
+ * Popup look is user-controlled only (color wheel). We do not read prefers-color-scheme
+ * or OS light/dark — new installs / missing key always start at DEFAULT_POPUP_THEME.
+ * Order: cycle with header color wheel. Persisted immediately on change.
+ */
+const DEFAULT_POPUP_THEME = "basic";
+const POPUP_THEME_IDS = [DEFAULT_POPUP_THEME, "light", "sepia", "rose", "dark", "basic-dark"];
 const USAGE_CACHE_KEY = "replymate_usage_cache";
 const USAGE_CACHE_TTL = 30000; // 30 seconds
 
@@ -267,6 +275,22 @@ const TRANSLATIONS = {
     replyMateTranslate: "ReplyMate Traducir",
   }
 };
+
+function normalizePopupTheme(theme) {
+  return POPUP_THEME_IDS.includes(theme) ? theme : DEFAULT_POPUP_THEME;
+}
+
+/** Apply settings popup theme (see POPUP_THEME_IDS). */
+function applyPopupTheme(theme) {
+  document.documentElement.setAttribute("data-theme", normalizePopupTheme(theme));
+}
+
+/** Save theme to storage immediately (no Save button). */
+function persistPopupTheme(theme) {
+  const t = normalizePopupTheme(theme);
+  applyPopupTheme(t);
+  chrome.storage.local.set({ [POPUP_THEME_KEY]: t });
+}
 
 // Get translation for current language
 function getTranslation(key, language = DEFAULT_LANGUAGE) {
@@ -885,14 +909,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-// Load saved values (tone, length, user name, language, translation toggle) when the popup opens.
-  chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY, TRANSLATION_ENABLED_KEY], async (result) => {
+// Load saved values (tone, length, user name, language, translation toggle, theme) when the popup opens.
+  chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY, TRANSLATION_ENABLED_KEY, POPUP_THEME_KEY], async (result) => {
     const tone = result[TONE_KEY] || DEFAULT_TONE;
     const length = result[LENGTH_KEY] || DEFAULT_LENGTH;
     const userName = result[USER_NAME_KEY] || "";
     const language = result[LANGUAGE_KEY] || DEFAULT_LANGUAGE;
     const translationEnabled = result[TRANSLATION_ENABLED_KEY];
     const translateEnabled = translationEnabled === false ? false : true;
+    // Theme: not derived from OS — only storage or DEFAULT_POPUP_THEME (see normalizePopupTheme).
+    const savedTheme = result[POPUP_THEME_KEY];
+    applyPopupTheme(savedTheme);
 
     toneSelect.value = tone;
     lengthSelect.value = length;
@@ -923,6 +950,17 @@ document.addEventListener("DOMContentLoaded", () => {
     translateToggleSelect.addEventListener("change", () => {
       const enabled = translateToggleSelect.value === "on";
       chrome.storage.local.set({ [TRANSLATION_ENABLED_KEY]: enabled });
+    });
+  }
+
+  // Color wheel: cycle themes (saved immediately)
+  const themeToggleBtn = document.getElementById("themeToggleBtn");
+  if (themeToggleBtn) {
+    themeToggleBtn.addEventListener("click", () => {
+      const cur = normalizePopupTheme(document.documentElement.getAttribute("data-theme") || DEFAULT_POPUP_THEME);
+      const idx = POPUP_THEME_IDS.indexOf(cur);
+      const next = POPUP_THEME_IDS[(idx + 1) % POPUP_THEME_IDS.length];
+      persistPopupTheme(next);
     });
   }
 
