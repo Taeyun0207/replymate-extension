@@ -487,6 +487,8 @@
       width: 420px;
       max-width: 92vw;
       background: #ffffff;
+      color-scheme: light;
+      color: #202124;
       border-radius: 12px;
       box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 1px rgba(0,0,0,0.06);
       z-index: 2147483646;
@@ -500,6 +502,20 @@
     `;
     const style = document.createElement("style");
     style.textContent = `
+      #replymate-translation-panel select,
+      #replymate-translation-panel textarea,
+      #replymate-translation-panel select option {
+        color: #202124 !important;
+        background-color: #ffffff !important;
+      }
+      #replymate-translation-panel #replymate-translate-input::placeholder {
+        color: #5f6368 !important;
+        opacity: 1;
+      }
+      #replymate-translation-panel .replymate-translate-body-inner {
+        color: #202124;
+        color-scheme: light;
+      }
       .replymate-translate-btn { padding:6px 10px;background:#7943f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;text-align:center;transition:background 0.2s,transform 0.15s,box-shadow 0.2s;box-shadow:0 1px 4px rgba(121,67,241,0.3); flex:1; min-width:0; }
       .replymate-translate-btn:hover { background:#6b3ad4;transform:translateY(-1px);box-shadow:0 2px 8px rgba(121,67,241,0.35); }
       .replymate-translate-btn:active { transform:translateY(0); }
@@ -533,7 +549,7 @@
         </div>
         <button id="replymate-translate-close" style="background:rgba(255,255,255,0.25);border:none;cursor:pointer;font-size:16px;color:#fff;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>
       </div>
-      <div style="padding:12px;background:#fafafa;">
+      <div class="replymate-translate-body-inner" style="padding:12px;background:#fafafa;color:#202124;color-scheme:light;">
         <div style="display:flex;flex-direction:column;gap:8px;">
           <div id="replymate-translate-gmail-buttons" style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;">
             <button id="replymate-translate-latest" class="replymate-translate-btn">Translate latest message</button>
@@ -541,13 +557,13 @@
           </div>
           <div>
             <label id="replymate-translate-to-label" style="font-size:11px;color:#5f6368;margin-bottom:3px;display:block;">Translate to</label>
-            <select id="replymate-translate-target" style="width:100%;padding:6px 10px;border:1px solid #dadce0;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:inherit;background:#fff;margin-bottom:8px;cursor:pointer;">
+            <select id="replymate-translate-target" style="width:100%;padding:6px 10px;border:1px solid #dadce0;border-radius:6px;font-size:12px;box-sizing:border-box;font-family:inherit;background:#fff;color:#202124;margin-bottom:8px;cursor:pointer;">
               <option value="">System Language</option>
             </select>
           </div>
           <div>
             <label id="replymate-translate-paste-label" style="font-size:11px;color:#5f6368;margin-bottom:3px;display:block;">Paste text to translate</label>
-            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="5" style="width:100%;min-height:100px;padding:10px;border:1px solid #dadce0;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit;background:#fff;"></textarea>
+            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="5" style="width:100%;min-height:100px;padding:10px;border:1px solid #dadce0;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit;background:#fff;color:#202124;"></textarea>
             <button id="replymate-translate-manual" class="replymate-translate-manual" style="margin-top:6px;">Translate</button>
           </div>
           <div>
