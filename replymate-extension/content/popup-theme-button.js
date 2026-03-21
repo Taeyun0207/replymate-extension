@@ -7,8 +7,26 @@
  */
 (function () {
   const POPUP_THEME_KEY = "replymate_popup_theme";
+  const USAGE_CACHE_KEY = "replymate_usage_cache";
+  const USAGE_CACHE_TTL = 30000;
   const DEFAULT_POPUP_THEME = "basic";
   const POPUP_THEME_IDS = ["basic", "light", "sepia", "rose", "slate", "dark", "basic-dark"];
+
+  function planAllowsPremium(plan) {
+    return plan === "pro" || plan === "pro_plus";
+  }
+
+  /** Match popup: saved wheel choice persists; free/logged-out UI uses basic colors. */
+  function effectivePopupThemeFromStorage(r) {
+    const popupTheme = typeof r[POPUP_THEME_KEY] === "string" ? normalize(r[POPUP_THEME_KEY]) : DEFAULT_POPUP_THEME;
+    const entry = r[USAGE_CACHE_KEY];
+    let usage = null;
+    if (entry && entry.data && entry.timestamp != null && Date.now() - entry.timestamp < USAGE_CACHE_TTL) {
+      usage = entry.data;
+    }
+    if (usage && planAllowsPremium(usage.plan)) return popupTheme;
+    return DEFAULT_POPUP_THEME;
+  }
 
   /**
    * Per theme: same values as #replymate-translation-panel[data-theme] in translation.js
@@ -189,19 +207,21 @@
     injectBaseStylesheet();
     try {
       if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        chrome.storage.local.get([POPUP_THEME_KEY], (r) => {
+        chrome.storage.local.get([POPUP_THEME_KEY, USAGE_CACHE_KEY], (r) => {
           if (chrome.runtime?.lastError) {
             applyTheme(DEFAULT_POPUP_THEME);
             return;
           }
-          const v = r?.[POPUP_THEME_KEY];
-          applyTheme(typeof v === "string" ? v : DEFAULT_POPUP_THEME);
+          applyTheme(effectivePopupThemeFromStorage(r || {}));
           setTimeout(refreshAllButtons, 250);
         });
         chrome.storage.onChanged.addListener((changes, areaName) => {
-          if (areaName !== "local" || !changes[POPUP_THEME_KEY]) return;
-          const v = changes[POPUP_THEME_KEY].newValue;
-          if (typeof v === "string") applyTheme(v);
+          if (areaName !== "local") return;
+          if (!changes[POPUP_THEME_KEY] && !changes[USAGE_CACHE_KEY]) return;
+          chrome.storage.local.get([POPUP_THEME_KEY, USAGE_CACHE_KEY], (r) => {
+            if (chrome.runtime?.lastError) return;
+            applyTheme(effectivePopupThemeFromStorage(r || {}));
+          });
         });
       } else {
         applyTheme(DEFAULT_POPUP_THEME);

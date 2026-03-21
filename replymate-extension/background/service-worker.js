@@ -125,6 +125,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false });
     });
     return true; // Keep channel open for async sendResponse
+  } else if (message.type === "OPEN_PRICING_PAGE") {
+    chrome.tabs.create({ url: (self.REPLYMATE_UPGRADE_URL || "https://replymateai.app/pricing"), active: true });
+    sendResponse({ success: true });
   }
 });
 

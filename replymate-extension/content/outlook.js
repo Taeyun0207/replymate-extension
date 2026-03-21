@@ -91,6 +91,8 @@ const TRANSLATIONS = {
     colorThemeToastPlanCheck: "We couldn’t verify your plan. Check your connection and try again.",
     signInToSeeUsage: "Sign in to use",
     translationsToday: "translations today",
+    translationUsageDaily: "{remaining} / {limit} left today",
+    translationViewPlansCta: "View plans",
     unlimitedTranslations: "Unlimited translations",
   },
   korean: {
@@ -115,6 +117,8 @@ const TRANSLATIONS = {
     colorThemeToastPlanCheck: "플랜을 확인하지 못했습니다. 연결을 확인한 뒤 다시 시도해 주세요.",
     signInToSeeUsage: "로그인하여 사용",
     translationsToday: "오늘 번역",
+    translationUsageDaily: "오늘 {remaining} / {limit}회 남음",
+    translationViewPlansCta: "요금제 보기",
     unlimitedTranslations: "무제한 번역",
   },
   japanese: {
@@ -139,6 +143,8 @@ const TRANSLATIONS = {
     colorThemeToastPlanCheck: "プランを確認できませんでした。接続を確認して再度お試しください。",
     signInToSeeUsage: "ログインしてご利用ください",
     translationsToday: "本日の翻訳",
+    translationUsageDaily: "本日 残り {remaining} / {limit} 回",
+    translationViewPlansCta: "料金・プラン",
     unlimitedTranslations: "無制限",
   },
   spanish: {
@@ -163,6 +169,8 @@ const TRANSLATIONS = {
     colorThemeToastPlanCheck: "No pudimos verificar tu plan. Comprueba la conexión e inténtalo de nuevo.",
     signInToSeeUsage: "Inicia sesión para usar",
     translationsToday: "traducciones hoy",
+    translationUsageDaily: "Quedan {remaining} / {limit} hoy",
+    translationViewPlansCta: "Ver planes",
     unlimitedTranslations: "Traducciones ilimitadas",
   }
 };

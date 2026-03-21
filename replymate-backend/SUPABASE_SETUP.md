@@ -150,6 +150,8 @@ Optional aliases: `STRIPE_PRICE_PRO_MONTHLY` / `STRIPE_PRICE_PROPLUS_MONTHLY` ov
 - `BILLING_SUCCESS_URL` – default `https://replymateai.app/pricing?success=1`
 - `BILLING_CANCEL_URL` – default `https://replymateai.app/pricing?cancelled=1`
 
+You will **not** see these in Render unless you add them; omitting them is fine (defaults apply). See **`RENDER_ENV.md`** in this folder.
+
 **Top-up Stripe setup:** Create two one-time prices in Stripe ($3.99 for 100 replies, $7.99 for 500 replies) and add to `.env`:
 - `STRIPE_PRICE_TOPUP_100` – price ID for +100 replies pack
 - `STRIPE_PRICE_TOPUP_500` – price ID for +500 replies pack

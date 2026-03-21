@@ -18,16 +18,18 @@
   const TRANSLATION_PANEL_ID = "replymate-translation-panel";
   const TRANSLATION_TOAST_ID = "replymate-translation-toast";
   const BACKEND_BASE = "https://replymate-backend-bot8.onrender.com";
-  const STORAGE_ICON_POS = "replymate_translation_icon_pos";
-  const STORAGE_PANEL_POS = "replymate_translation_panel_pos";
-  const STORAGE_PANEL_SIZE = "replymate_translation_panel_size";
+  /** Per-page (URL) + per-tab-session layout — sessionStorage, not chrome.storage. */
+  const LAYOUT_SESSION_PREFIX = "replymate_translation_layout_1_";
   const STORAGE_TARGET_LANG = "replymate_translation_target_lang";
 
-  /** Default panel size for first-time users (no saved size in storage). */
-  const PANEL_DEFAULT_WIDTH = 480;
-  const PANEL_DEFAULT_HEIGHT = 560;
+  /** Default when nothing valid is stored (new install / cleared). */
+  const PANEL_DEFAULT_WIDTH = 460;
+  const PANEL_DEFAULT_HEIGHT = 580;
   const PANEL_MIN_WIDTH = 300;
   const PANEL_MIN_HEIGHT = 260;
+
+  /** Set from loadPanelSizeState — used so we don't persist size before first user resize. */
+  let panelUserSized = false;
   const STORAGE_TRANSLATION_ENABLED = "replymate_translation_enabled";
   /** Translate panel appearance only — same theme IDs / order as popup color wheel, separate storage. */
   const STORAGE_TRANSLATION_PANEL_THEME = "replymate_translation_panel_theme";
@@ -36,6 +38,33 @@
   const USAGE_CACHE_TTL = 30000;
   const TRANSLATION_PANEL_THEME_IDS = ["basic", "light", "sepia", "rose", "slate", "dark", "basic-dark"];
   const DEFAULT_TRANSLATION_PANEL_THEME = "basic";
+
+  function getPricingPageUrl() {
+    const g = typeof self !== "undefined" ? self : (typeof window !== "undefined" ? window : {});
+    return g.REPLYMATE_UPGRADE_URL || "https://replymateai.app/pricing";
+  }
+
+  /** Opens marketing / pricing page (same URL as extension popup “Manage subscription”). */
+  function openPricingPage() {
+    const url = getPricingPageUrl();
+    try {
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ type: "OPEN_PRICING_PAGE" }, () => {
+          if (chrome.runtime?.lastError) {
+            try {
+              window.open(url, "_blank", "noopener,noreferrer");
+            } catch (_) { /* ignore */ }
+          }
+        });
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch (_) {
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch (_2) { /* ignore */ }
+    }
+  }
 
   let translateAbortController = null;
   let lastTranslatedSource = "";
@@ -345,7 +374,7 @@
       "font-weight:500",
       "font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
       "box-shadow:0 4px 20px rgba(0,0,0,0.35)",
-      "white-space:nowrap",
+      "white-space:normal",
       "box-sizing:border-box",
       "pointer-events:none",
     ].join(";");
@@ -357,7 +386,8 @@
 
     const text = document.createElement("span");
     text.textContent = message;
-    text.style.cssText = "white-space:nowrap";
+    text.style.cssText =
+      "white-space:normal;max-width:min(280px,calc(100vw - 48px));line-height:1.35";
 
     wrap.appendChild(icon);
     wrap.appendChild(text);
@@ -403,15 +433,99 @@
     }
   }
 
-  /**
-   * Save position to chrome.storage.local.
-   */
-  function savePosition(key, x, y) {
+  function hashUrlForLayoutKey(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) + h) ^ s.charCodeAt(i);
+    }
+    return (h >>> 0).toString(36) + "_" + s.length;
+  }
+
+  function getLayoutSessionStorageKey() {
     try {
-      if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        chrome.storage.local.set({ [key]: { x, y } });
+      return LAYOUT_SESSION_PREFIX + hashUrlForLayoutKey(String(location.href || ""));
+    } catch {
+      return LAYOUT_SESSION_PREFIX + "0";
+    }
+  }
+
+  function readLayoutFromSession() {
+    try {
+      if (typeof sessionStorage === "undefined") return null;
+      const raw = sessionStorage.getItem(getLayoutSessionStorageKey());
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      return o && typeof o === "object" ? o : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLayoutToSession(partial) {
+    try {
+      if (typeof sessionStorage === "undefined") return;
+      const key = getLayoutSessionStorageKey();
+      let prev = {};
+      try {
+        const raw = sessionStorage.getItem(key);
+        if (raw) prev = JSON.parse(raw);
+      } catch { /* ignore */ }
+      if (!prev || typeof prev !== "object") prev = {};
+      const next = { ...prev };
+      if (partial.icon && typeof partial.icon.x === "number" && typeof partial.icon.y === "number") {
+        next.icon = { x: partial.icon.x, y: partial.icon.y };
       }
-    } catch (e) { /* ignore */ }
+      if (partial.panel && typeof partial.panel.x === "number" && typeof partial.panel.y === "number") {
+        next.panel = { x: partial.panel.x, y: partial.panel.y };
+      }
+      if (partial.size && typeof partial.size.w === "number" && typeof partial.size.h === "number") {
+        next.size = { w: partial.size.w, h: partial.size.h };
+      }
+      if (typeof partial.userSized === "boolean") next.userSized = partial.userSized;
+      sessionStorage.setItem(key, JSON.stringify(next));
+    } catch { /* ignore */ }
+  }
+
+  function saveIconPosition(x, y) {
+    writeLayoutToSession({ icon: { x, y } });
+  }
+
+  function savePanelPosition(x, y) {
+    writeLayoutToSession({ panel: { x, y } });
+  }
+
+  function isValidStoredPos(v) {
+    return (
+      v &&
+      typeof v.x === "number" &&
+      typeof v.y === "number" &&
+      Number.isFinite(v.x) &&
+      Number.isFinite(v.y)
+    );
+  }
+
+  function loadIconPosition(defaultX, defaultY) {
+    return new Promise((resolve) => {
+      try {
+        const L = readLayoutFromSession();
+        const v = L?.icon;
+        resolve(isValidStoredPos(v) ? { x: v.x, y: v.y } : { x: defaultX, y: defaultY });
+      } catch {
+        resolve({ x: defaultX, y: defaultY });
+      }
+    });
+  }
+
+  function loadPanelPosition(defaultX, defaultY) {
+    return new Promise((resolve) => {
+      try {
+        const L = readLayoutFromSession();
+        const v = L?.panel;
+        resolve(isValidStoredPos(v) ? { x: v.x, y: v.y } : { x: defaultX, y: defaultY });
+      } catch {
+        resolve({ x: defaultX, y: defaultY });
+      }
+    });
   }
 
   /**
@@ -426,61 +540,75 @@
     };
   }
 
-  function savePanelSize(w, h) {
-    const c = clampPanelSize(w, h);
-    try {
-      if (typeof chrome !== "undefined" && chrome.storage?.local) {
-        chrome.storage.local.set({ [STORAGE_PANEL_SIZE]: { w: c.w, h: c.h } });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
   /** When `display: none`, layout size is 0×0 — never treat that as real dimensions. */
   function isTranslationPanelExpanded(panel) {
     return !!(panel && panel.style.display === "flex");
   }
 
-  /** Save size from layout while the panel is visible (offsetWidth/height are correct). */
   function persistPanelSizeFromLayout(panel) {
     if (!isTranslationPanelExpanded(panel)) return;
+    if (!panelUserSized) return;
     const w = panel.offsetWidth;
     const h = panel.offsetHeight;
     if (w >= PANEL_MIN_WIDTH && h >= PANEL_MIN_HEIGHT) {
-      savePanelSize(w, h);
+      savePanelSize(w, h, false);
     }
   }
 
-  /**
-   * After close, inline width/height still hold the last size (offsetWidth is 0). Use before tab unload.
-   */
   function persistPanelSizeFromInlineStyle(panel) {
     if (!panel) return;
+    if (!panelUserSized) return;
     const sw = parseFloat(panel.style.width);
     const sh = parseFloat(panel.style.height);
     if (Number.isFinite(sw) && Number.isFinite(sh) && sw >= PANEL_MIN_WIDTH && sh >= PANEL_MIN_HEIGHT) {
-      savePanelSize(sw, sh);
+      savePanelSize(sw, sh, false);
     }
   }
 
-  function loadPanelSize(defaultW, defaultH) {
+  function isTruthyUserSizedFlag(flag) {
+    return flag === true || flag === "true" || flag === 1;
+  }
+
+  /**
+   * @param {boolean} [markUserSized] - true when the user finished dragging the resize handle.
+   */
+  function savePanelSize(w, h, markUserSized) {
+    const c = clampPanelSize(w, h);
+    if (markUserSized) panelUserSized = true;
+    writeLayoutToSession({
+      size: { w: c.w, h: c.h },
+      ...(markUserSized ? { userSized: true } : {}),
+    });
+  }
+
+  /** Load panel size for the current URL in this tab session (sessionStorage). */
+  function loadPanelSizeState() {
+    const fallback = { w: PANEL_DEFAULT_WIDTH, h: PANEL_DEFAULT_HEIGHT, userSized: false };
     return new Promise((resolve) => {
       try {
-        if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.get([STORAGE_PANEL_SIZE], (r) => {
-            const v = r?.[STORAGE_PANEL_SIZE];
-            const ok =
-              v &&
-              typeof v.w === "number" &&
-              typeof v.h === "number" &&
-              Number.isFinite(v.w) &&
-              Number.isFinite(v.h);
-            resolve(ok ? { w: v.w, h: v.h } : { w: defaultW, h: defaultH });
-          });
-        } else {
-          resolve({ w: defaultW, h: defaultH });
+        const L = readLayoutFromSession();
+        if (!L) {
+          resolve(fallback);
+          return;
         }
+        const v = L.size;
+        const flag = L.userSized;
+        const rw = v != null ? Number(v.w) : NaN;
+        const rh = v != null ? Number(v.h) : NaN;
+        const ok = v && Number.isFinite(rw) && Number.isFinite(rh) && rw > 0 && rh > 0;
+        if (isTruthyUserSizedFlag(flag) && ok) {
+          const c = clampPanelSize(rw, rh);
+          resolve({ w: c.w, h: c.h, userSized: true });
+          return;
+        }
+        if (ok) {
+          const c = clampPanelSize(rw, rh);
+          resolve({ w: c.w, h: c.h, userSized: !!isTruthyUserSizedFlag(flag) });
+          return;
+        }
+        resolve(fallback);
       } catch {
-        resolve({ w: defaultW, h: defaultH });
+        resolve(fallback);
       }
     });
   }
@@ -515,6 +643,23 @@
   /** Pro/Pro+ only for non-basic themes (same rules as popup settings). */
   function planAllowsPremiumColorThemes(plan) {
     return plan === "pro" || plan === "pro_plus";
+  }
+
+  /**
+   * Premium color wheel applies only for Pro and Pro+ (`replymate_translation_panel_theme` in storage
+   * keeps the user’s choice for when they qualify again). Not signed in or Free → always basic UI.
+   */
+  function getEffectiveTranslationPanelTheme(savedTheme, usage) {
+    const s = normalizeTranslationPanelTheme(savedTheme);
+    if (usage && planAllowsPremiumColorThemes(usage.plan)) return s;
+    return DEFAULT_TRANSLATION_PANEL_THEME;
+  }
+
+  /** Reconcile panel + FAB `data-theme` with current plan (call after fresh usage fetch). */
+  async function applyTranslationPanelThemeForUsage(panel, usage) {
+    if (!panel) return;
+    const saved = await loadTranslationPanelTheme();
+    applyTranslationPanelTheme(panel, getEffectiveTranslationPanelTheme(saved, usage));
   }
 
   function saveTranslationPanelTheme(theme) {
@@ -555,8 +700,13 @@
     });
   }
 
-  /** Prefer 30s usage cache (instant); fall back to network when needed. */
+  /**
+   * Usage for theme gating — same order as popup color wheel: must be signed in or cache can
+   * still show a stale Pro plan after sign-out and incorrectly allow cycling themes.
+   */
   async function getUsageForThemeGate() {
+    const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
+    if (!token) return null;
     const cached = await getCachedUsageFromStorage();
     if (cached) return cached;
     return fetchUsage();
@@ -643,32 +793,6 @@
         chrome.storage.local.set({ [STORAGE_TRANSLATION_ENABLED]: enabled });
       }
     } catch (e) { /* ignore */ }
-  }
-
-  /**
-   * Load position from chrome.storage.local.
-   */
-  function loadPosition(key, defaultX, defaultY) {
-    return new Promise((resolve) => {
-      try {
-        if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.get([key], (r) => {
-            const v = r?.[key];
-            const ok =
-              v &&
-              typeof v.x === "number" &&
-              typeof v.y === "number" &&
-              Number.isFinite(v.x) &&
-              Number.isFinite(v.y);
-            resolve(ok ? { x: v.x, y: v.y } : { x: defaultX, y: defaultY });
-          });
-        } else {
-          resolve({ x: defaultX, y: defaultY });
-        }
-      } catch {
-        resolve({ x: defaultX, y: defaultY });
-      }
-    });
   }
 
   /**
@@ -900,7 +1024,7 @@
         const { w, h } = clampPanelSize(r.width, r.height);
         panel.style.width = `${w}px`;
         panel.style.height = `${h}px`;
-        savePanelSize(w, h);
+        savePanelSize(w, h, true);
       };
 
       handle.addEventListener("pointermove", onPointerMove, { passive: false });
@@ -923,7 +1047,6 @@
       box-sizing: border-box;
       width: ${PANEL_DEFAULT_WIDTH}px;
       height: ${PANEL_DEFAULT_HEIGHT}px;
-      max-width: 92vw;
       border-radius: 12px;
       z-index: 2147483646;
       font-family: 'Google Sans', Roboto, -apple-system, sans-serif;
@@ -1301,7 +1424,10 @@
       #replymate-translation-panel .replymate-translate-body-inner label { color: var(--tp-muted) !important; }
       #replymate-translation-panel #replymate-translate-usage {
         color: var(--tp-muted) !important;
-        line-height: 1.2;
+        line-height: 1.35;
+        flex: 0 1 auto;
+        min-width: 0;
+        text-align: left;
       }
       #replymate-translation-panel .replymate-translate-main {
         flex: 1 1 auto;
@@ -1321,7 +1447,7 @@
       }
       #replymate-translation-panel #replymate-translate-result {
         flex: 1 1 auto;
-        min-height: 80px;
+        min-height: 96px;
         background: var(--tp-result-bg) !important;
         color: var(--tp-result-text) !important;
         border: 1px solid var(--tp-border) !important;
@@ -1429,6 +1555,56 @@
         outline: 2px solid var(--tp-primary);
         outline-offset: 2px;
       }
+      #replymate-translation-panel #replymate-translate-usage-wrap {
+        flex: 1;
+        min-width: 0;
+        max-width: 82%;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      /* Same gold CTA as popup Manage Subscription (.upgrade-link.upgrade-pro-plus) */
+      #replymate-translation-panel .replymate-translate-pricing-cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        padding: 4px 9px;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.2;
+        border-radius: 6px;
+        border: 1px solid #ffff99;
+        cursor: pointer;
+        font-family: inherit;
+        background: linear-gradient(135deg, #ffd700 0%, #ffd700 50%, #ffff99 100%) !important;
+        color: #2c1810 !important;
+        box-shadow: 0 2px 4px rgba(212, 175, 55, 0.3);
+        white-space: nowrap;
+        transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+      }
+      #replymate-translation-panel .replymate-translate-pricing-cta:hover {
+        background: linear-gradient(135deg, #ffd700 0%, #b8860b 50%, #8b6914 100%) !important;
+        color: #2c1810 !important;
+        box-shadow: 0 4px 8px rgba(212, 175, 55, 0.4);
+        transform: translateY(-1px);
+      }
+      #replymate-translation-panel .replymate-translate-pricing-cta:focus-visible {
+        outline: 2px solid #8b6914;
+        outline-offset: 2px;
+      }
+      #replymate-translation-panel .replymate-translate-pricing-cta[hidden] {
+        display: none !important;
+      }
+      #replymate-translate-result .replymate-translate-pricing-cta--in-result {
+        width: 100%;
+        padding: 8px 12px;
+        font-size: 12px;
+        box-sizing: border-box;
+      }
       #replymate-translate-close:hover { background:rgba(255,255,255,0.4) !important; }
       #replymate-translate-close:focus-visible { outline:2px solid rgba(255,255,255,0.8);outline-offset:2px; }
       #replymate-translate-header { cursor:grab; flex-shrink:0; }
@@ -1512,7 +1688,7 @@
           <button type="button" id="replymate-translate-close" style="background:rgba(255,255,255,0.25);border:none;cursor:pointer;font-size:16px;color:#fff;width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;transition:background 0.2s;">&times;</button>
       </div>
       </div>
-      <div class="replymate-translate-body-inner" style="padding:12px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+      <div class="replymate-translate-body-inner" style="padding:14px;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
         <div id="replymate-translate-main" class="replymate-translate-main">
           <div id="replymate-translate-gmail-buttons" style="display:flex;flex-direction:row;flex-wrap:wrap;gap:6px;flex-shrink:0;">
             <button id="replymate-translate-latest" class="replymate-translate-btn">Translate latest message</button>
@@ -1526,7 +1702,7 @@
           </div>
           <div style="flex-shrink:0;">
             <label id="replymate-translate-paste-label" style="font-size:11px;margin-bottom:3px;display:block;">Paste text to translate</label>
-            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="5" style="width:100%;min-height:100px;padding:10px;border:1px solid;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+            <textarea id="replymate-translate-input" placeholder="Paste text to translate..." rows="5" style="width:100%;min-height:112px;padding:10px;border:1px solid;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
             <button id="replymate-translate-manual" class="replymate-translate-manual" style="margin-top:6px;">Translate</button>
           </div>
           <div class="replymate-translate-result-section">
@@ -1536,7 +1712,10 @@
         </div>
         <div id="replymate-translate-footer">
           <button id="replymate-translate-copy" class="replymate-translate-copy">Copy</button>
-          <span id="replymate-translate-usage" style="font-size:11px;text-align:right;"></span>
+          <div id="replymate-translate-usage-wrap">
+            <button type="button" id="replymate-translate-pricing-cta" class="replymate-translate-pricing-cta" hidden>View plans</button>
+            <span id="replymate-translate-usage" style="font-size:11px;"></span>
+          </div>
       </div>
       </div>
       <div id="replymate-translate-resize" title="Resize" aria-label="Resize panel" role="separator"></div>
@@ -1589,10 +1768,22 @@
           const planName = planNames[usage.plan] || planNames.free || "Free";
           const used = usage.translationUsed;
           const limit = usage.translationLimit;
+          let remaining = usage.translationRemaining;
           if (limit == null) {
             usageEl.textContent = `${planName} · ${t("unlimitedTranslations")}`;
-          } else if (typeof used === "number" && typeof limit === "number") {
-            usageEl.textContent = `${planName} · ${used} / ${limit} ${t("translationsToday")}`;
+          } else if (typeof limit === "number") {
+            if (typeof remaining !== "number" && typeof used === "number") {
+              remaining = Math.max(0, limit - used);
+            }
+            if (typeof remaining === "number") {
+              const template = t("translationUsageDaily");
+              const line = String(template)
+                .replace(/\{remaining\}/g, String(remaining))
+                .replace(/\{limit\}/g, String(limit));
+              usageEl.textContent = `${planName} · ${line}`;
+            } else {
+              usageEl.textContent = planName;
+            }
           } else {
             usageEl.textContent = planName;
           }
@@ -1600,6 +1791,21 @@
       } else {
         usageEl.textContent = "";
       }
+    }
+    const pricingCta = panel && panel.querySelector("#replymate-translate-pricing-cta");
+    if (pricingCta) {
+      pricingCta.textContent = t("translationViewPlansCta");
+      let showPricing = false;
+      if (usage && usage.translationLimit != null) {
+        let rem = usage.translationRemaining;
+        const lim = usage.translationLimit;
+        const used = usage.translationUsed;
+        if (typeof rem !== "number" && typeof used === "number" && typeof lim === "number") {
+          rem = Math.max(0, lim - used);
+        }
+        showPricing = typeof rem === "number" && typeof lim === "number" && rem === 0;
+      }
+      pricingCta.hidden = !showPricing;
     }
     return usage;
   }
@@ -1635,6 +1841,8 @@
         themeBtnLock.title = tt;
       }
     }
+
+    await applyTranslationPanelThemeForUsage(panel, usageForLock);
 
     const targetSelect = document.getElementById("replymate-translate-target");
     if (targetSelect) {
@@ -1688,6 +1896,42 @@
     lastTranslatedSource = "";
     lastTranslatedTarget = "";
     lastTranslatedResult = "";
+  }
+
+  /**
+   * Limit reached: message + primary CTA to pricing (DOM-safe, no innerHTML from API text).
+   */
+  function setResultLimitReached(panel, messageText, t) {
+    const el = panel && panel.querySelector("#replymate-translate-result");
+    if (!el) return;
+    el.classList.remove("replymate-loading");
+    el.classList.add("replymate-result-error");
+    el.style.color = "";
+    el.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.flexDirection = "column";
+    wrap.style.gap = "10px";
+    wrap.style.alignItems = "stretch";
+    const msg = document.createElement("p");
+    msg.style.margin = "0";
+    msg.style.lineHeight = "1.45";
+    msg.style.whiteSpace = "pre-wrap";
+    msg.style.wordBreak = "break-word";
+    msg.textContent = messageText;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "replymate-translate-pricing-cta replymate-translate-pricing-cta--in-result";
+    btn.textContent = t("translationViewPlansCta");
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPricingPage();
+    });
+    wrap.appendChild(msg);
+    wrap.appendChild(btn);
+    el.appendChild(wrap);
+    el.scrollTop = el.scrollHeight;
   }
 
   /**
@@ -1782,6 +2026,7 @@
         lastTranslatedSource = sourceText;
         lastTranslatedTarget = targetCode;
         lastTranslatedResult = translated;
+        updateUsageDisplay(panel).catch(() => {});
       } catch (streamErr) {
         if (streamErr.name === "AbortError") return;
         const translated = await translateText(sourceText, targetCode, signal);
@@ -1789,6 +2034,7 @@
         lastTranslatedSource = sourceText;
         lastTranslatedTarget = targetCode;
         lastTranslatedResult = translated;
+        updateUsageDisplay(panel).catch(() => {});
       }
     } catch (err) {
       if (err.name === "AbortError") return;
@@ -1798,7 +2044,12 @@
       const displayMsg = isLimitReached ? t("translateLimitReached")
         : isAuthError ? t("signInRequired")
         : t("translateError") + msg;
-      setResult(panel, displayMsg, true);
+      if (isLimitReached) {
+        setResultLimitReached(panel, displayMsg, t);
+        updateUsageDisplay(panel).catch(() => {});
+      } else {
+        setResult(panel, displayMsg, true);
+      }
     } finally {
       setTranslateButtonsDisabled(panel, false);
       translateAbortController = null;
@@ -1846,33 +2097,7 @@
     const panel = createPanel();
     const savedTheme = await loadTranslationPanelTheme();
     const usageForTheme = await getCachedUsageFromStorage();
-    let effectiveTheme = normalizeTranslationPanelTheme(savedTheme);
-    if (usageForTheme && !planAllowsPremiumColorThemes(usageForTheme.plan) && effectiveTheme !== DEFAULT_TRANSLATION_PANEL_THEME) {
-      effectiveTheme = DEFAULT_TRANSLATION_PANEL_THEME;
-      try {
-        if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          chrome.storage.local.set({
-            [STORAGE_TRANSLATION_PANEL_THEME]: effectiveTheme,
-          });
-        }
-      } catch (e) { /* ignore */ }
-    }
-    if (!usageForTheme) {
-      fetchUsage()
-        .then((u) => {
-          if (!u || planAllowsPremiumColorThemes(u.plan)) return;
-          const p = document.getElementById(TRANSLATION_PANEL_ID);
-          const cur = normalizeTranslationPanelTheme(p?.getAttribute("data-theme"));
-          if (cur === DEFAULT_TRANSLATION_PANEL_THEME) return;
-          try {
-            if (typeof chrome !== "undefined" && chrome.storage?.local) {
-              chrome.storage.local.set({ [STORAGE_TRANSLATION_PANEL_THEME]: DEFAULT_TRANSLATION_PANEL_THEME });
-            }
-          } catch (e) { /* ignore */ }
-          if (p) applyTranslationPanelTheme(p, DEFAULT_TRANSLATION_PANEL_THEME);
-        })
-        .catch(() => {});
-    }
+    const effectiveTheme = getEffectiveTranslationPanelTheme(savedTheme, usageForTheme);
 
     const icon = document.createElement("div");
     icon.id = TRANSLATION_ICON_ID;
@@ -1900,7 +2125,7 @@
 
     const defaultIconX = window.innerWidth - 24 - 48;
     const defaultIconY = window.innerHeight - 24 - 48;
-    const iconPos = await loadPosition(STORAGE_ICON_POS, defaultIconX, defaultIconY);
+    const iconPos = await loadIconPosition(defaultIconX, defaultIconY);
     const iconX = clamp(iconPos.x, 0, window.innerWidth - 48);
     const iconY = clamp(iconPos.y, 0, window.innerHeight - 48);
     icon.style.left = iconX + "px";
@@ -1916,20 +2141,21 @@
         iconDidDrag = true;
       },
       (x, y) => {
-        savePosition(STORAGE_ICON_POS, clamp(x, 0, window.innerWidth - 48), clamp(y, 0, window.innerHeight - 48));
+        saveIconPosition(clamp(x, 0, window.innerWidth - 48), clamp(y, 0, window.innerHeight - 48));
       }
     );
 
     applyTranslationPanelTheme(panel, effectiveTheme);
 
-    const sizeRaw = await loadPanelSize(PANEL_DEFAULT_WIDTH, PANEL_DEFAULT_HEIGHT);
-    const { w: panelSavedW, h: panelSavedH } = clampPanelSize(sizeRaw.w, sizeRaw.h);
+    const sizeState = await loadPanelSizeState();
+    panelUserSized = sizeState.userSized;
+    const { w: panelSavedW, h: panelSavedH } = clampPanelSize(sizeState.w, sizeState.h);
     panel.style.width = `${panelSavedW}px`;
     panel.style.height = `${panelSavedH}px`;
 
     const defaultPanelX = Math.max(0, (window.innerWidth - panelSavedW) / 2);
     const defaultPanelY = Math.max(0, (window.innerHeight - panelSavedH) / 2);
-    const panelPos = await loadPosition(STORAGE_PANEL_POS, defaultPanelX, defaultPanelY);
+    const panelPos = await loadPanelPosition(defaultPanelX, defaultPanelY);
     const panelRect = panel.getBoundingClientRect();
     const panelW = panelRect.width || panelSavedW;
     const panelH = panelRect.height || panelSavedH;
@@ -1943,7 +2169,7 @@
     if (header) {
       makePanelDraggable(header, panel, null, (x, y) => {
         const r = panel.getBoundingClientRect();
-        savePosition(STORAGE_PANEL_POS, clamp(x, 0, window.innerWidth - r.width), clamp(y, 0, window.innerHeight - r.height));
+        savePanelPosition(clamp(x, 0, window.innerWidth - r.width), clamp(y, 0, window.innerHeight - r.height));
       });
     }
 
@@ -1967,7 +2193,7 @@
         if (Math.abs(w - r.width) > 0.5 || Math.abs(h - r.height) > 0.5) {
           p.style.width = `${w}px`;
           p.style.height = `${h}px`;
-          savePanelSize(w, h);
+          /* Do not persist — narrow windows used to save tiny sizes. User size only via resize handle. */
         }
         const r2 = p.getBoundingClientRect();
         const px = parseFloat(p.style.left) || 0;
@@ -1977,7 +2203,7 @@
         if (nx !== px || ny !== py) {
           p.style.left = `${nx}px`;
           p.style.top = `${ny}px`;
-          savePosition(STORAGE_PANEL_POS, nx, ny);
+          savePanelPosition(nx, ny);
         }
       }, 150);
     });
@@ -2030,15 +2256,27 @@
       themeToggleEl.addEventListener("click", async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        const usage = await getUsageForThemeGate();
         const lang = typeof getCurrentLanguage === "function" ? await getCurrentLanguage() : "english";
         const t = (key) => (typeof getTranslation === "function" ? getTranslation(key, lang) : key);
+        /** Same as popup `themeToggleBtn` + `showThemeProToast(getTranslation("colorThemeUpgradePrompt"))`. */
+        const msg = t("colorThemeUpgradePrompt");
+
+        const token = typeof getAccessToken === "function" ? await getAccessToken() : null;
+        if (!token) {
+          showThemeUpgradeNotice(msg);
+          return;
+        }
+
+        let usage = await getUsageForThemeGate();
         if (!usage) {
-          showThemeUpgradeNotice(t("colorThemeUpgradePrompt"));
+          usage = await fetchUsage();
+        }
+        if (!usage) {
+          showThemeUpgradeNotice(msg);
           return;
         }
         if (!planAllowsPremiumColorThemes(usage.plan)) {
-          showThemeUpgradeNotice(t("colorThemeUpgradePrompt"));
+          showThemeUpgradeNotice(msg);
           return;
         }
         const cur = normalizeTranslationPanelTheme(panel.getAttribute("data-theme"));
@@ -2055,6 +2293,15 @@
       panel.style.transform = "scale(0.96)";
       setTimeout(() => { panel.style.display = "none"; clearPanelState(panel); }, 200);
     });
+
+    const pricingFooterBtn = document.getElementById("replymate-translate-pricing-cta");
+    if (pricingFooterBtn) {
+      pricingFooterBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openPricingPage();
+      });
+    }
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && panel.style.display === "flex") {
@@ -2138,10 +2385,10 @@
   };
 
   /**
-   * Apply saved position from storage (used on init and when another tab saves).
+   * Apply layout for the current URL from this tab’s sessionStorage (also after SPA navigations).
    */
   function applyStoredPositions() {
-    loadPosition(STORAGE_ICON_POS, window.innerWidth - 24 - 48, window.innerHeight - 24 - 48).then((pos) => {
+    loadIconPosition(window.innerWidth - 24 - 48, window.innerHeight - 24 - 48).then((pos) => {
       const icon = document.getElementById(TRANSLATION_ICON_ID);
       if (icon) {
         const x = clamp(pos.x, 0, window.innerWidth - 48);
@@ -2155,37 +2402,69 @@
     const defaultPanelCenterX = Math.max(0, (window.innerWidth - PANEL_DEFAULT_WIDTH) / 2);
     const defaultPanelCenterY = Math.max(0, (window.innerHeight - PANEL_DEFAULT_HEIGHT) / 2);
     Promise.all([
-      loadPanelSize(PANEL_DEFAULT_WIDTH, PANEL_DEFAULT_HEIGHT),
-      loadPosition(STORAGE_PANEL_POS, defaultPanelCenterX, defaultPanelCenterY),
+      loadPanelSizeState(),
+      loadPanelPosition(defaultPanelCenterX, defaultPanelCenterY),
     ]).then(([sz, pos]) => {
       const panel = document.getElementById(TRANSLATION_PANEL_ID);
       if (!panel) return;
+      panelUserSized = sz.userSized;
       const { w, h } = clampPanelSize(sz.w, sz.h);
       panel.style.width = `${w}px`;
       panel.style.height = `${h}px`;
-        const r = panel.getBoundingClientRect();
-      const pw = r.width;
-      const ph = r.height;
+      const br = panel.getBoundingClientRect();
+      const pw = br.width > 8 ? br.width : w;
+      const ph = br.height > 8 ? br.height : h;
       const x = clamp(pos.x, 0, window.innerWidth - pw);
       const y = clamp(pos.y, 0, window.innerHeight - ph);
       panel.style.left = `${x}px`;
       panel.style.top = `${y}px`;
-        panel.style.transform = "none";
+      panel.style.transform = "none";
     });
   }
 
-  // Sync position across tabs: when user moves icon/panel in another tab, update this tab too
-  // Also show/hide icon when ReplyMate Translate is toggled in popup
+  /** Gmail/Outlook SPA: URL can change without reload — re-apply per-page session layout. */
+  let lastTranslationLayoutHref = "";
+  function installTranslationLayoutUrlListener() {
+    lastTranslationLayoutHref = location.href;
+    const onUrlChange = () => {
+      if (location.href === lastTranslationLayoutHref) return;
+      lastTranslationLayoutHref = location.href;
+      applyStoredPositions();
+    };
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    history.pushState = function (...args) {
+      const r = origPush.apply(this, args);
+      queueMicrotask(onUrlChange);
+      return r;
+    };
+    history.replaceState = function (...args) {
+      const r = origReplace.apply(this, args);
+      queueMicrotask(onUrlChange);
+      return r;
+    };
+    window.addEventListener("popstate", () => queueMicrotask(onUrlChange));
+    window.addEventListener("hashchange", () => queueMicrotask(onUrlChange));
+  }
+
+  // Show/hide icon when ReplyMate Translate is toggled in popup; theme/usage from storage
   if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== "local") return;
-      if (changes[STORAGE_ICON_POS] || changes[STORAGE_PANEL_POS] || changes[STORAGE_PANEL_SIZE]) {
-        applyStoredPositions();
+      if (changes[USAGE_CACHE_KEY]) {
+        const p = document.getElementById(TRANSLATION_PANEL_ID);
+        if (!p) return;
+        const entry = changes[USAGE_CACHE_KEY]?.newValue;
+        const usage = entry && entry.data ? entry.data : null;
+        applyTranslationPanelThemeForUsage(p, usage);
       }
       if (changes[STORAGE_TRANSLATION_PANEL_THEME]) {
         const p = document.getElementById(TRANSLATION_PANEL_ID);
-        const v = changes[STORAGE_TRANSLATION_PANEL_THEME]?.newValue;
-        if (p && typeof v === "string") applyTranslationPanelTheme(p, v);
+        if (p && typeof changes[STORAGE_TRANSLATION_PANEL_THEME]?.newValue === "string") {
+          getCachedUsageFromStorage().then((usage) => {
+            applyTranslationPanelThemeForUsage(p, usage);
+          });
+        }
       }
       if (changes[STORAGE_TRANSLATION_ENABLED]) {
         const v = changes[STORAGE_TRANSLATION_ENABLED]?.newValue;
@@ -2202,5 +2481,6 @@
       setTimeout(init, 0);
     }
   }
+  installTranslationLayoutUrlListener();
   scheduleInit();
 })();

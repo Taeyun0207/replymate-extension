@@ -309,37 +309,27 @@ function planAllowsPremiumColorThemes(plan) {
   return plan === "pro" || plan === "pro_plus";
 }
 
+/** Saved theme in storage vs plan: premium plans use saved choice; free/logged-out show basic but storage is left intact for next sign-in. */
+function getEffectivePopupTheme(plan, savedTheme) {
+  const s = normalizePopupTheme(savedTheme);
+  if (planAllowsPremiumColorThemes(plan)) return s;
+  return DEFAULT_POPUP_THEME;
+}
+
 /**
- * If the user is not on Pro/Pro+, reset both popup and translation panel themes to basic.
- * Call when usage indicates free/downgrade, or when logged out (pass plan "free").
+ * Apply the correct popup theme for the plan. Does not overwrite chrome.storage — saved preference
+ * persists through sign-out so Pro users get their theme back after signing in again.
  */
 function enforceColorThemesForPlan(plan) {
   return new Promise((resolve) => {
-    if (planAllowsPremiumColorThemes(plan)) {
-      resolve();
-      return;
-    }
-    chrome.storage.local.get([POPUP_THEME_KEY, TRANSLATION_PANEL_THEME_KEY], (r) => {
+    chrome.storage.local.get([POPUP_THEME_KEY], (r) => {
       if (chrome.runtime?.lastError) {
         resolve();
         return;
       }
-      const pt = normalizePopupTheme(r[POPUP_THEME_KEY]);
-      const tt = normalizePopupTheme(r[TRANSLATION_PANEL_THEME_KEY]);
-      if (pt === DEFAULT_POPUP_THEME && tt === DEFAULT_POPUP_THEME) {
-        resolve();
-        return;
-      }
-      chrome.storage.local.set(
-        {
-          [POPUP_THEME_KEY]: DEFAULT_POPUP_THEME,
-          [TRANSLATION_PANEL_THEME_KEY]: DEFAULT_POPUP_THEME,
-        },
-        () => {
-          applyPopupTheme(DEFAULT_POPUP_THEME);
-          resolve();
-        }
-      );
+      const saved = r[POPUP_THEME_KEY] || DEFAULT_POPUP_THEME;
+      applyPopupTheme(getEffectivePopupTheme(plan, saved));
+      resolve();
     });
   });
 }
@@ -489,19 +479,22 @@ function getCachedUsage() {
 
 // Cache usage data with timestamp
 function setCachedUsage(usageData) {
-  try {
-    if (usageData === null || usageData === undefined) {
-      chrome.storage.local.remove([USAGE_CACHE_KEY]);
-      return;
+  return new Promise((resolve) => {
+    try {
+      if (usageData === null || usageData === undefined) {
+        chrome.storage.local.remove([USAGE_CACHE_KEY], () => resolve());
+        return;
+      }
+      const cacheData = {
+        data: usageData,
+        timestamp: Date.now()
+      };
+      chrome.storage.local.set({ [USAGE_CACHE_KEY]: cacheData }, () => resolve());
+    } catch (error) {
+      console.warn("[ReplyMate] Failed to cache usage:", error);
+      resolve();
     }
-    const cacheData = {
-      data: usageData,
-      timestamp: Date.now()
-    };
-    chrome.storage.local.set({ [USAGE_CACHE_KEY]: cacheData });
-  } catch (error) {
-    console.warn("[ReplyMate] Failed to cache usage:", error);
-  }
+  });
 }
 
 // Shared function to fetch usage from backend (requires auth)
@@ -523,7 +516,7 @@ async function fetchUsageFromBackend() {
     }
 
     const data = await response.json();
-    setCachedUsage(data);
+    await setCachedUsage(data);
     return data;
   } catch (error) {
     console.error("[ReplyMate] Failed to fetch usage:", error);
@@ -938,8 +931,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (result.error !== "Auth cancelled") alert(getTranslation("authErrorGeneric", language));
       } else {
         await updateLoginUI(language);
-        setCachedUsage(null);
-        loadUsageData(language);
+        await setCachedUsage(null);
+        await loadUsageData(language, true);
         syncAuthConfigToStorage();
       }
     });
@@ -951,9 +944,10 @@ document.addEventListener("DOMContentLoaded", () => {
     signOutButton.addEventListener("click", async () => {
       await ReplyMateAuth.signOut();
       const language = languageSelect?.value || DEFAULT_LANGUAGE;
+      await enforceColorThemesForPlan("free");
+      await setCachedUsage(null);
       await updateLoginUI(language);
-      setCachedUsage(null);
-      loadUsageData(language);
+      await loadUsageData(language, true);
     });
   }
 
@@ -1017,7 +1011,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const days = data.remainingDays ?? 0;
         const successMsg = getTranslation("cancelSuccessMessage", language).replace("{days}", days);
         alert(successMsg);
-        setCachedUsage(null);
+        await setCachedUsage(null);
         await loadUsageData(language, true);
       } catch (err) {
         const msg = err?.message || getTranslation("cancelError", language);
@@ -1055,7 +1049,7 @@ document.addEventListener("DOMContentLoaded", () => {
           throw new Error(errMsg);
         }
         alert(getTranslation("reactivateSuccess", language));
-        setCachedUsage(null);
+        await setCachedUsage(null);
         await loadUsageData(language, true);
       } catch (err) {
         const msg = err?.message || getTranslation("reactivateError", language);
@@ -1069,8 +1063,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Load saved values (tone, length, user name, language, translation toggle, theme) when the popup opens.
   chrome.storage.local.get([TONE_KEY, LENGTH_KEY, USER_NAME_KEY, LANGUAGE_KEY, TRANSLATION_ENABLED_KEY, POPUP_THEME_KEY], async (result) => {
-    // Theme first — before await work — removes flash when sessionStorage was empty (cold open).
-    applyPopupTheme(result[POPUP_THEME_KEY] || DEFAULT_POPUP_THEME);
+    const savedTheme = result[POPUP_THEME_KEY] || DEFAULT_POPUP_THEME;
+    let signedInOnOpen = false;
+    try {
+      if (typeof ReplyMateAuth !== "undefined") signedInOnOpen = await ReplyMateAuth.isSignedIn();
+    } catch (_) {}
+    /* Logged out: basic only (saved wheel choice stays in storage for later). Signed in: optimistic saved until loadUsageData refines. */
+    applyPopupTheme(signedInOnOpen ? savedTheme : DEFAULT_POPUP_THEME);
 
     const tone = result[TONE_KEY] || DEFAULT_TONE;
     const length = result[LENGTH_KEY] || DEFAULT_LENGTH;
@@ -1102,12 +1101,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       await enforceColorThemesForPlan("free");
     }
-
-    // Re-apply after plan enforcement (free/downgrade may have reset storage to basic).
-    chrome.storage.local.get([POPUP_THEME_KEY], (r) => {
-      if (chrome.runtime?.lastError) return;
-      applyPopupTheme(r[POPUP_THEME_KEY] || DEFAULT_POPUP_THEME);
-    });
   });
 
   // ReplyMate Translate toggle - save immediately so icon shows/hides right away
