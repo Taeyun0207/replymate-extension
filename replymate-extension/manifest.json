@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ReplyMate: AI Email Reply Assistant & Translator",
-  "version": "1.0.5",
-  "description": "AI-powered Gmail & Outlook reply assistant",
+  "name": "ReplyMate - AI reply generator for Gmail & Outlook + Translator",
+  "version": "1.0.4",
+  "description": "Save hours every week with AI-powered email replies and instant translation in one click.",
   "permissions": [
     "storage",
     "identity"
