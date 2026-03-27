@@ -18,6 +18,14 @@ const POPUP_THEME_SESSION_KEY = "replymate_popup_theme_cache";
 const USAGE_CACHE_KEY = "replymate_usage_cache";
 const USAGE_CACHE_TTL = 30000; // 30 seconds
 
+function notifyMailTabsAuthChanged() {
+  try {
+    chrome.runtime.sendMessage({ type: "REPLYMATE_AUTH_STATE_CHANGED" }, () => {
+      void chrome.runtime.lastError;
+    });
+  } catch (_) {}
+}
+
 const DEFAULT_TONE = "auto";
 const DEFAULT_LENGTH = "auto";
 const DEFAULT_LANGUAGE = "english";
@@ -934,6 +942,7 @@ document.addEventListener("DOMContentLoaded", () => {
         await setCachedUsage(null);
         await loadUsageData(language, true);
         syncAuthConfigToStorage();
+        notifyMailTabsAuthChanged();
       }
     });
   }
@@ -948,6 +957,7 @@ document.addEventListener("DOMContentLoaded", () => {
       await setCachedUsage(null);
       await updateLoginUI(language);
       await loadUsageData(language, true);
+      notifyMailTabsAuthChanged();
     });
   }
 

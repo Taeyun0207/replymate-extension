@@ -1504,7 +1504,6 @@ async function createReplyMateButton() {
     });
 
     console.log("[ReplyMate Debug] userName:", settings.userName);
-    console.log("[ReplyMate Debug] threadContext.inferredUserName:", threadContext.inferredUserName);
 
     // Validate thread context before proceeding
     if (!threadContext.latestMessage || threadContext.latestMessage.length === 0) {
@@ -1543,7 +1542,7 @@ async function createReplyMateButton() {
       latestMessage: threadContext.latestMessage || "",
       previousMessages: threadContext.previousMessages || [],
       recipientName: threadContext.recipientName || "",
-      userName: settings.userName || threadContext.inferredUserName || "",
+      userName: (settings.userName || "").trim(),
       tone: finalTone,
       length: finalLength,
       lengthInstruction: buildLengthInstructionWithAuto(finalLength, language, null, threadContext),
@@ -1562,7 +1561,6 @@ Length: ${finalLength}
 
     console.log("[ReplyMate Debug] userName sent to backend:", payload.userName);
     console.log("[ReplyMate Debug] settings.userName:", settings.userName);
-    console.log("[ReplyMate Debug] threadContext.inferredUserName:", threadContext.inferredUserName);
     console.log("[ReplyMate Auto] Final tone:", finalTone, `(${toneReason})`);
     console.log("[ReplyMate Auto] Final length:", finalLength, `(${lengthReason})`);
     console.log("[ReplyMate Auto] Final prompt used for AI generation:", payload.lengthInstruction);
@@ -1728,6 +1726,36 @@ function createManageSubscriptionLink(language) {
   return link;
 }
 
+/** After sign-in/out in the popup, refresh usage and upgrade UI in this frame without reloading Gmail. */
+async function refreshReplyMateGmailUIAfterAuth() {
+  try {
+    const language = await getCurrentLanguage();
+    const usageData = await getUsageData();
+    if (usageData) {
+      await updateUsageDisplayFromData(usageData);
+    } else {
+      document.querySelectorAll(".replymate-usage-display").forEach((el) => {
+        el.textContent = formatUsageDisplay("free", 0, 0, language);
+      });
+    }
+    const loggedIn = await isLoggedIn();
+    for (const upgradeContainer of document.querySelectorAll(".replymate-upgrade-container")) {
+      upgradeContainer.innerHTML = "";
+      upgradeContainer.style.display = "flex";
+      if (!loggedIn) {
+        upgradeContainer.style.display = "none";
+        continue;
+      }
+      const ud = await getUsageData();
+      if (ud && ud.remaining === 0) {
+        upgradeContainer.appendChild(createManageSubscriptionLink(language));
+      } else {
+        upgradeContainer.style.display = "none";
+      }
+    }
+  } catch (_) {}
+}
+
 // Insert the provided reply text into a Gmail rich-text editor (contenteditable).
 async function insertReplyIntoEditor(editor, replyText) {
   if (!(editor instanceof HTMLElement)) return;
@@ -1887,11 +1915,6 @@ function detectLanguage(text) {
   return 'english';
 }
 
-// After English greetings, stop before these tokens so "Hi Taeyun, thanks for…" → Taeyun (not "Taeyun thanks for").
-const INFER_NAME_STOP_WORDS = new Set([
-  "thanks", "thank", "for", "and", "the", "to", "a", "an", "but", "so", "if", "as", "at", "on", "in", "is", "it", "we", "you", "i", "im", "i've", "ill", "please", "hope", "just", "wanted", "writing", "following", "regarding",
-]);
-
 // Extract information about the currently opened Gmail thread (subject, messages, names).
 // This is a best-effort DOM scrape and falls back safely if elements are not found.
 function extractThreadContext() {
@@ -1965,7 +1988,6 @@ function extractThreadContext() {
     let latestMessage = "";
     let previousMessages = [];
     let recipientName = "";
-    let inferredUserName = "";
 
     if (visibleMessages.length > 0) {
       const latest = visibleMessages[visibleMessages.length - 1];
@@ -2008,31 +2030,6 @@ function extractThreadContext() {
       if (nameElInLatest && nameElInLatest.textContent) {
         recipientName = nameElInLatest.textContent.trim();
       }
-
-      // Try to infer user's name from how they were addressed in the latest message
-      const messageText = latest.text.toLowerCase();
-      const greetings = ["hi ", "hello ", "dear ", "hey ", "good morning ", "good afternoon "];
-      
-      for (const greeting of greetings) {
-        const index = messageText.indexOf(greeting);
-        if (index !== -1) {
-          const afterGreeting = messageText.substring(index + greeting.length);
-          const rawWords = afterGreeting.split(/\s+/).filter(Boolean);
-          const nameParts = [];
-          for (let wi = 0; wi < rawWords.length && nameParts.length < 3; wi++) {
-            const stripped = rawWords[wi].replace(/[,.!?;:]/g, "");
-            const lower = stripped.toLowerCase();
-            if (!stripped) continue;
-            if (INFER_NAME_STOP_WORDS.has(lower)) break;
-            nameParts.push(stripped);
-          }
-          const potentialName = nameParts.join(" ").trim();
-          if (potentialName && potentialName.length > 1 && potentialName.length < 30) {
-            inferredUserName = potentialName.charAt(0).toUpperCase() + potentialName.slice(1);
-            break;
-          }
-        }
-      }
     } else {
       console.warn("[ReplyMate DEBUG] No visible messages found in thread");
     }
@@ -2053,7 +2050,6 @@ function extractThreadContext() {
       latestMessage: latestMessage || "",
       previousMessages: previousMessages || [],
       recipientName: recipientName || "",
-      inferredUserName: inferredUserName || "",
       participants: extractParticipants(visibleMessages)
     };
 
@@ -2066,8 +2062,6 @@ function extractThreadContext() {
       previousMessagesCount: result.previousMessages.length,
       hasRecipientName: !!result.recipientName,
       recipientName: result.recipientName || "NONE",
-      hasInferredUserName: !!result.inferredUserName,
-      inferredUserName: result.inferredUserName || "NONE",
       participants: result.participants
     });
 
@@ -2090,7 +2084,7 @@ function extractThreadContext() {
       latestMessage: "",
       previousMessages: [],
       recipientName: "",
-      inferredUserName: "",
+      participants: [],
     };
   }
 }
@@ -2402,7 +2396,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
           subject: threadContext.subject || "",
           latestMessage: threadContext.latestMessage || "",
           recipientName: threadContext.recipientName || "",
-          userName: settings.userName || threadContext.inferredUserName || "",
+          userName: (settings.userName || "").trim(),
           tone: finalTone,
           length: finalLength,
           lengthInstruction: buildLengthInstructionWithAuto(finalLength, language, null, threadContext),
@@ -2420,7 +2414,6 @@ Length: ${finalLength}
 
         console.log("[ReplyMate Debug] Hover mode - userName sent to backend:", payload.userName);
         console.log("[ReplyMate Debug] Hover mode - settings.userName:", settings.userName);
-        console.log("[ReplyMate Debug] Hover mode - threadContext.inferredUserName:", threadContext.inferredUserName);
         console.log("[ReplyMate Auto] Hover mode - Final tone:", finalTone, `(${toneReason})`);
         console.log("[ReplyMate Auto] Hover mode - Final length:", finalLength, `(${lengthReason})`);
         console.log("[ReplyMate Auto] Hover mode - Final prompt used for AI generation:", payload.lengthInstruction);
@@ -2430,7 +2423,7 @@ Length: ${finalLength}
         if (Array.isArray(threadContext.previousMessages) && threadContext.previousMessages.length > 0) {
           // Add speaker labeling to previous messages
           const labeledPreviousMessages = threadContext.previousMessages.map(msg => {
-            const userDisplayName = settings.userName || threadContext.inferredUserName || "";
+            const userDisplayName = (settings.userName || "").trim();
             let speakerName = "Other";
             
             // Check if sender is the user
@@ -2914,3 +2907,9 @@ observer.observe(document.body, {
 injectButtonIntoComposeAreas().then(() => {
   setupMessageListHoverHandlers();
 });
+
+if (typeof window.__replyMateSetAuthSyncHandler === "function") {
+  window.__replyMateSetAuthSyncHandler(() => {
+    void refreshReplyMateGmailUIAfterAuth();
+  });
+}

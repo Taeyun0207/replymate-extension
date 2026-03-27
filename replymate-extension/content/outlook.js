@@ -348,6 +348,20 @@ async function updateUsageDisplay(usageDisplay) {
   }
 }
 
+async function refreshReplyMateOutlookUIAfterAuth() {
+  try {
+    const language = await getCurrentLanguage();
+    const usageData = await getUsageData();
+    if (usageData) {
+      await updateUsageDisplayFromData(usageData);
+    } else {
+      document.querySelectorAll(".replymate-usage-display").forEach((el) => {
+        el.textContent = formatUsageDisplay("free", 0, 0, language);
+      });
+    }
+  } catch (_) {}
+}
+
 function textToEditorHtml(text) {
   if (typeof text !== "string") return "";
   const normalized = text.replace(/\n{3,}/g, "\n\n");
@@ -588,11 +602,6 @@ async function insertReplyIntoEditor(editor, replyText) {
 
 // --- Outlook-specific DOM ---
 
-// Same as Gmail: avoid "Taeyun thanks for" from "Hi Taeyun, thanks for…".
-const INFER_NAME_STOP_WORDS = new Set([
-  "thanks", "thank", "for", "and", "the", "to", "a", "an", "but", "so", "if", "as", "at", "on", "in", "is", "it", "we", "you", "i", "im", "i've", "ill", "please", "hope", "just", "wanted", "writing", "following", "regarding",
-]);
-
 /**
  * Extract thread context from Outlook reading pane.
  * Outlook Web uses: div[role="main"], div[role="document"], etc.
@@ -642,7 +651,6 @@ function extractThreadContext() {
     let latestMessage = "";
     let previousMessages = [];
     let recipientName = "";
-    let inferredUserName = "";
 
     if (visibleMessages.length > 0) {
       const latest = visibleMessages[visibleMessages.length - 1];
@@ -651,29 +659,6 @@ function extractThreadContext() {
         .slice(Math.max(0, visibleMessages.length - 9), visibleMessages.length - 1)
         .map((item) => ({ text: item.text, senderName: item.senderName }));
       recipientName = latest.senderName || "";
-
-      const messageText = latest.text.toLowerCase();
-      const greetings = ["hi ", "hello ", "dear ", "hey ", "good morning ", "good afternoon "];
-      for (const greeting of greetings) {
-        const index = messageText.indexOf(greeting);
-        if (index !== -1) {
-          const afterGreeting = messageText.substring(index + greeting.length);
-          const rawWords = afterGreeting.split(/\s+/).filter(Boolean);
-          const nameParts = [];
-          for (let wi = 0; wi < rawWords.length && nameParts.length < 3; wi++) {
-            const stripped = rawWords[wi].replace(/[,.!?;:]/g, "");
-            const lower = stripped.toLowerCase();
-            if (!stripped) continue;
-            if (INFER_NAME_STOP_WORDS.has(lower)) break;
-            nameParts.push(stripped);
-          }
-          const potentialName = nameParts.join(" ").trim();
-          if (potentialName && potentialName.length > 1 && potentialName.length < 30) {
-            inferredUserName = potentialName.charAt(0).toUpperCase() + potentialName.slice(1);
-            break;
-          }
-        }
-      }
     }
 
     return {
@@ -681,12 +666,11 @@ function extractThreadContext() {
       latestMessage: latestMessage || "",
       previousMessages: previousMessages || [],
       recipientName: recipientName || "",
-      inferredUserName: inferredUserName || "",
       participants: visibleMessages.map((m) => ({ name: m.senderName, language: "english" }))
     };
   } catch (error) {
     console.error("[ReplyMate Outlook] extractThreadContext error:", error);
-    return { subject: "", latestMessage: "", previousMessages: [], recipientName: "", inferredUserName: "", participants: [] };
+    return { subject: "", latestMessage: "", previousMessages: [], recipientName: "", participants: [] };
   }
 }
 
@@ -818,7 +802,7 @@ async function createReplyMateButton() {
       latestMessage: threadContext.latestMessage || "",
       previousMessages: (threadContext.previousMessages || []).map((msg) => ({ text: msg.text, speakerName: msg.senderName || "Other" })),
       recipientName: threadContext.recipientName || "",
-      userName: settings.userName || threadContext.inferredUserName || "",
+      userName: (settings.userName || "").trim(),
       tone: finalTone,
       length: finalLength,
       lengthInstruction: buildLengthInstructionWithAuto(finalLength, lang),
@@ -1306,7 +1290,7 @@ async function runHoverGenerateReplyWorkflow(row, sourceButton) {
       latestMessage: threadContext.latestMessage || "",
       previousMessages: (threadContext.previousMessages || []).map((m) => ({ text: m.text, speakerName: m.senderName || "Other" })),
       recipientName: threadContext.recipientName || "",
-      userName: settings.userName || threadContext.inferredUserName || "",
+      userName: (settings.userName || "").trim(),
       tone: settings.tone || DEFAULT_TONE,
       length: settings.length || DEFAULT_LENGTH,
       lengthInstruction: buildLengthInstructionWithAuto(settings.length || DEFAULT_LENGTH, lang),
@@ -1507,3 +1491,9 @@ const observer = new MutationObserver(async () => {
 observer.observe(document.body, { childList: true, subtree: true });
 
 injectButtonIntoComposeAreas();
+
+if (typeof window.__replyMateSetAuthSyncHandler === "function") {
+  window.__replyMateSetAuthSyncHandler(() => {
+    void refreshReplyMateOutlookUIAfterAuth();
+  });
+}

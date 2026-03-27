@@ -118,6 +118,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(`[ReplyMate Background] Received Stripe top-up request for +${message.pack} replies`);
     createStripeTopupCheckout(message.pack);
     sendResponse({ success: true });
+  } else if (message.type === "REPLYMATE_AUTH_STATE_CHANGED") {
+    const patterns = [
+      "https://mail.google.com/*",
+      "https://outlook.live.com/*",
+      "https://outlook.office.com/*",
+    ];
+    chrome.tabs.query({ url: patterns }, (tabs) => {
+      for (const tab of tabs || []) {
+        if (typeof tab.id !== "number") continue;
+        chrome.tabs.sendMessage(tab.id, { type: "REPLYMATE_AUTH_STATE_CHANGED" }).catch(() => {});
+      }
+    });
+    sendResponse({ ok: true });
+    return true;
   } else if (message.type === "OPEN_POPUP_FOR_LOGIN") {
     // Open popup so user can sign in (called when AI Reply clicked while not logged in)
     chrome.action.openPopup().then(() => sendResponse({ success: true })).catch((err) => {
