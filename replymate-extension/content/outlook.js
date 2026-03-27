@@ -588,6 +588,11 @@ async function insertReplyIntoEditor(editor, replyText) {
 
 // --- Outlook-specific DOM ---
 
+// Same as Gmail: avoid "Taeyun thanks for" from "Hi Taeyun, thanks for…".
+const INFER_NAME_STOP_WORDS = new Set([
+  "thanks", "thank", "for", "and", "the", "to", "a", "an", "but", "so", "if", "as", "at", "on", "in", "is", "it", "we", "you", "i", "im", "i've", "ill", "please", "hope", "just", "wanted", "writing", "following", "regarding",
+]);
+
 /**
  * Extract thread context from Outlook reading pane.
  * Outlook Web uses: div[role="main"], div[role="document"], etc.
@@ -653,8 +658,16 @@ function extractThreadContext() {
         const index = messageText.indexOf(greeting);
         if (index !== -1) {
           const afterGreeting = messageText.substring(index + greeting.length);
-          const words = afterGreeting.split(/\s+/).slice(0, 3);
-          const potentialName = words.join(" ").replace(/[,.!?;:]/g, "").trim();
+          const rawWords = afterGreeting.split(/\s+/).filter(Boolean);
+          const nameParts = [];
+          for (let wi = 0; wi < rawWords.length && nameParts.length < 3; wi++) {
+            const stripped = rawWords[wi].replace(/[,.!?;:]/g, "");
+            const lower = stripped.toLowerCase();
+            if (!stripped) continue;
+            if (INFER_NAME_STOP_WORDS.has(lower)) break;
+            nameParts.push(stripped);
+          }
+          const potentialName = nameParts.join(" ").trim();
           if (potentialName && potentialName.length > 1 && potentialName.length < 30) {
             inferredUserName = potentialName.charAt(0).toUpperCase() + potentialName.slice(1);
             break;

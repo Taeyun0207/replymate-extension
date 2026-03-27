@@ -1887,6 +1887,11 @@ function detectLanguage(text) {
   return 'english';
 }
 
+// After English greetings, stop before these tokens so "Hi Taeyun, thanks for…" → Taeyun (not "Taeyun thanks for").
+const INFER_NAME_STOP_WORDS = new Set([
+  "thanks", "thank", "for", "and", "the", "to", "a", "an", "but", "so", "if", "as", "at", "on", "in", "is", "it", "we", "you", "i", "im", "i've", "ill", "please", "hope", "just", "wanted", "writing", "following", "regarding",
+]);
+
 // Extract information about the currently opened Gmail thread (subject, messages, names).
 // This is a best-effort DOM scrape and falls back safely if elements are not found.
 function extractThreadContext() {
@@ -2012,9 +2017,16 @@ function extractThreadContext() {
         const index = messageText.indexOf(greeting);
         if (index !== -1) {
           const afterGreeting = messageText.substring(index + greeting.length);
-          // Look for name up to 3 words after greeting
-          const words = afterGreeting.split(/\s+/).slice(0, 3);
-          const potentialName = words.join(" ").replace(/[,.!?;:]/g, "").trim();
+          const rawWords = afterGreeting.split(/\s+/).filter(Boolean);
+          const nameParts = [];
+          for (let wi = 0; wi < rawWords.length && nameParts.length < 3; wi++) {
+            const stripped = rawWords[wi].replace(/[,.!?;:]/g, "");
+            const lower = stripped.toLowerCase();
+            if (!stripped) continue;
+            if (INFER_NAME_STOP_WORDS.has(lower)) break;
+            nameParts.push(stripped);
+          }
+          const potentialName = nameParts.join(" ").trim();
           if (potentialName && potentialName.length > 1 && potentialName.length < 30) {
             inferredUserName = potentialName.charAt(0).toUpperCase() + potentialName.slice(1);
             break;
