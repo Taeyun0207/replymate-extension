@@ -82,7 +82,7 @@ const TRANSLATIONS = {
     translatePasteLabel: "Paste or type text to translate", translateResultLabel: "Result", translateToLabel: "Translate to",
     systemLanguage: "System Language", translating: "Translating...", contentSame: "Same content.\nNo translation needed.",
     alreadyInYourLanguage: "Already in your selected language", translateCopy: "Copy",
-    translateClose: "Close", translateError: "Translation failed: ", translateLimitReached: "Daily limit reached. Upgrade below for more translations.",
+    translateClose: "Close", translateError: "Translation failed: ", translateLimitReached: "Daily limit reached. Upgrade to Pro/Pro+ for more translations.",
     noTextToTranslate: "Please paste or enter text to translate.", nothingToCopy: "Nothing to copy. Translate something first.", copied: "Copied!",
     colorThemeProOnly:
       "Color themes are a Pro feature. Upgrade to Pro or Pro+ to unlock custom looks—in settings, the translation panel, and AI Reply buttons.",
@@ -108,7 +108,7 @@ const TRANSLATIONS = {
     translatePasteLabel: "번역할 텍스트 붙여넣기 또는 입력", translateResultLabel: "번역 결과",
     translateToLabel: "번역 대상 언어", systemLanguage: "시스템 언어", translating: "번역 중...", contentSame: "동일한 내용입니다.",
     alreadyInYourLanguage: "선택한 언어와 같습니다", translateCopy: "복사",
-    translateClose: "닫기", translateError: "번역 실패: ", translateLimitReached: "오늘 한도에 도달했습니다. 아래에서 업그레이드하면 더 사용할 수 있어요.",
+    translateClose: "닫기", translateError: "번역 실패: ", translateLimitReached: "일일 한도에 도달했습니다. 더 많은 번역을 위해 Pro 또는 Pro+로 업그레이드하세요.",
     noTextToTranslate: "번역할 텍스트를 붙여넣거나 입력해 주세요.", nothingToCopy: "복사할 내용이 없습니다. 먼저 번역해 주세요.", copied: "복사됨!",
     colorThemeProOnly:
       "색 테마는 Pro 전용 기능입니다. Pro 또는 Pro+로 업그레이드하면 설정, 번역 패널, AI 답장 버튼 등에서 맞춤 색상을 사용할 수 있습니다.",
@@ -134,7 +134,7 @@ const TRANSLATIONS = {
     translatePasteLabel: "翻訳するテキストを貼り付けまたは入力", translateResultLabel: "翻訳結果",
     translateToLabel: "翻訳先", systemLanguage: "システム言語", translating: "翻訳中...", contentSame: "同じ内容です。",
     alreadyInYourLanguage: "選択した言語と同じです", translateCopy: "コピー",
-    translateClose: "閉じる", translateError: "翻訳に失敗しました: ", translateLimitReached: "本日の上限に達しました。下からプランをアップグレードすると続けて使えます。",
+    translateClose: "閉じる", translateError: "翻訳に失敗しました: ", translateLimitReached: "本日の上限に達しました。さらに翻訳するには Pro / Pro+ にアップグレードしてください。",
     noTextToTranslate: "翻訳するテキストを貼り付けるか入力してください。", nothingToCopy: "コピーする内容がありません。先に翻訳してください。", copied: "コピーしました！",
     colorThemeProOnly:
       "カラーテーマはPro向けの機能です。ProまたはPro+にアップグレードすると、設定・翻訳パネル・AI返信ボタンなどでカスタム配色が使えます。",
@@ -160,7 +160,7 @@ const TRANSLATIONS = {
     translatePasteLabel: "Pega o escribe el texto a traducir", translateResultLabel: "Resultado",
     translateToLabel: "Traducir a", systemLanguage: "Idioma del sistema", translating: "Traduciendo...", contentSame: "Mismo contenido.",
     alreadyInYourLanguage: "Ya está en tu idioma seleccionado", translateCopy: "Copiar",
-    translateClose: "Cerrar", translateError: "Error de traducción: ", translateLimitReached: "Has alcanzado el límite diario. Mejora tu plan abajo para seguir traduciendo.",
+    translateClose: "Cerrar", translateError: "Error de traducción: ", translateLimitReached: "Has alcanzado el límite diario. Actualiza a Pro o Pro+ para más traducciones.",
     noTextToTranslate: "Pega o escribe texto para traducir.", nothingToCopy: "Nada que copiar. Traduce algo primero.", copied: "¡Copiado!",
     colorThemeProOnly:
       "Los temas de color son una función Pro. Mejora a Pro o Pro+ para desbloquear apariencias personalizadas en ajustes, el panel de traducción y los botones de respuesta con IA.",

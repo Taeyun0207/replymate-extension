@@ -1314,6 +1314,7 @@
         --tp-spinner-track: #5f6368;
         --tp-loading: #9aa0a6;
         --tp-error: #f28b82;
+        --tp-clear-hover-icon: #ffc4bc;
         --tp-resize: rgba(121, 67, 241, 0.2);
         --tp-resize-hover: rgba(167, 139, 250, 0.28);
         --tp-resize-grip: rgba(167, 139, 250, 0.55);
@@ -1350,6 +1351,7 @@
         --tp-spinner-track: #48484a;
         --tp-loading: #a1a1a6;
         --tp-error: #ff453a;
+        --tp-clear-hover-icon: #ff6b61;
         --tp-resize: rgba(255, 255, 255, 0.12);
         --tp-resize-hover: rgba(255, 255, 255, 0.18);
         --tp-resize-grip: rgba(255, 255, 255, 0.4);
@@ -1551,6 +1553,7 @@
         outline-offset: 2px;
       }
       #replymate-translation-panel .replymate-translate-manual {
+        min-width: 0;
         padding: 6px 12px;
         background: var(--tp-header-gradient) !important;
         color: #fff !important;
@@ -1577,10 +1580,9 @@
         outline-offset: 2px;
       }
       #replymate-translation-panel .replymate-translate-actions {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: stretch;
         gap: 8px;
         margin-top: 6px;
       }
@@ -1588,10 +1590,13 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 32px;
+        width: auto;
+        min-width: 0;
+        min-height: 0;
+        aspect-ratio: 1;
+        align-self: stretch;
         padding: 0;
-        flex-shrink: 0;
+        box-sizing: border-box;
         background: var(--tp-copy-bg);
         color: var(--tp-copy-text);
         border: 1px solid var(--tp-copy-border, var(--tp-border));
@@ -1612,8 +1617,8 @@
       }
       #replymate-translation-panel .replymate-translate-clear:hover {
         background: var(--tp-copy-hover);
-        border-color: var(--tp-border);
-        color: var(--tp-error);
+        border-color: var(--tp-error);
+        color: var(--tp-clear-hover-icon, var(--tp-error));
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
       }
       #replymate-translation-panel .replymate-translate-clear:disabled {
